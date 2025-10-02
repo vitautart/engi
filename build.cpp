@@ -1,0 +1,324 @@
+// How to use:
+// > g++ -O2 -o bld build.cpp
+// > ./b
+
+#include <cstdlib>
+#include <stdio.h>
+#include <string>
+#include <string_view>
+#include <filesystem>
+#include <iostream>
+#include <vector>
+#include <optional>
+#include <array>
+
+namespace fs = std::filesystem;
+
+static const fs::path BUILD_FOLDER = fs::path("build");
+static const fs::path BUILD_TEMP_FOLDER = BUILD_FOLDER / fs::path("temp");
+static const fs::path BUILD_SHADER_FOLDER = BUILD_FOLDER / fs::path("shaders");
+static const fs::path APP_NAME = fs::path("ox");
+static const fs::path APP_PATH = BUILD_FOLDER / APP_NAME;
+static const fs::path GLFW_LIB_PATH = BUILD_FOLDER / fs::path("libglfw.a");
+static const char* ADDITIONAL_COMPILER_FLAGS = "-std=c++20 -DOX_RENDER_DEBUG"" " 
+                                                "-Isrc -Iexternal/glfw/include"" "
+                                                "-Iexternal/vma -Iexternal/stb" " ";
+static const char* ADDITIONAL_COMPILER_FLAGS_GLFW = "-w -O3 -D_GLFW_X11=1 -Iexternal/glfw/src -Iexternal/glfw/include -fpermissive"" ";
+static const char* ADDITIONAL_LINK_FLAGS = "-Lbuild -lvulkan -ldl -lpthread -lX11 -lglfw"; 
+//static const char* ADDITIONAL_LINK_FLAGS_GLFW = "-ldl -lm -lpthread";
+
+#define RENDER_DIR "src/render"
+#define PIPELINES_DIR RENDER_DIR"/pipelines"
+static const std::array<const char*, 0> CPP_FILES = 
+{
+    /*RENDER_DIR"/render.cpp",
+    RENDER_DIR"/vma_impl.cpp",
+    RENDER_DIR"/rendercommon.cpp",
+    RENDER_DIR"/renderwindow.cpp",
+    RENDER_DIR"/renderview3d.cpp",
+    RENDER_DIR"/rendershape2d.cpp",
+    RENDER_DIR"/res/resbuffers.cpp",
+    RENDER_DIR"/rendertext2d.cpp",
+    PIPELINES_DIR"/mesh3d_pp.cpp",
+    PIPELINES_DIR"/wireframe3d_pp.cpp",
+    PIPELINES_DIR"/uiblock_pp.cpp",
+    PIPELINES_DIR"/text2d_pp.cpp",
+    "src/main.cpp",
+    "src/app.cpp",
+    "src/fileutils.cpp",
+    "src/brep.cpp",
+    "src/topoplanesurface2.cpp",
+    "src/discretization.cpp",
+    "src/ui/ui.cpp",
+    "src/test2.cpp"*/
+};
+
+#define GLFW_SRC "external/glfw/src/"
+static const std::array GLFW_CPP_FILES = 
+{
+    GLFW_SRC"window.c",
+    GLFW_SRC"xkb_unicode.c",
+    GLFW_SRC"glx_context.c",
+    GLFW_SRC"x11_window.c", 
+    GLFW_SRC"monitor.c", 
+    GLFW_SRC"posix_thread.c", 
+    GLFW_SRC"posix_time.h", 
+    GLFW_SRC"x11_init.c", 
+    GLFW_SRC"context.c", 
+    GLFW_SRC"posix_time.c", 
+    GLFW_SRC"x11_monitor.c", 
+    GLFW_SRC"linux_joystick.c", 
+    GLFW_SRC"input.c", 
+    GLFW_SRC"init.c", 
+    GLFW_SRC"vulkan.c", 
+    GLFW_SRC"osmesa_context.c", 
+    GLFW_SRC"egl_context.c",
+};
+
+static const std::array<const char*, 0> SHADERS =
+{
+    /*"src/shaders/simple3d.vert",
+    "src/shaders/wireframe3d.vert",
+    "src/shaders/simple3d.frag",
+    "src/shaders/diffuse3d.vert",
+    "src/shaders/diffuse3d.frag",
+    "src/shaders/uiblock.vert",
+    "src/shaders/uiblock.frag",
+    "src/shaders/text2d.vert",
+    "src/shaders/text2d.frag",*/
+};
+
+auto linux_call(const char* command) -> std::string 
+{
+    constexpr size_t MAX_STR_ALLOC = 1024;
+    std::string data = {};
+    FILE* cmd = popen(command, "r");
+    if (!cmd)
+        return data;
+
+    char result[MAX_STR_ALLOC]={0x0};
+    while (fgets(result, MAX_STR_ALLOC - 1, cmd) != nullptr)
+        data += &result[0];
+    pclose(cmd);
+    return data;
+}
+
+std::time_t to_time_t(fs::file_time_type tp)
+{
+    using namespace std::chrono;
+    auto sctp = time_point_cast<system_clock::duration>(
+            tp - fs::file_time_type::clock::now() + system_clock::now());
+    return system_clock::to_time_t(sctp);
+}
+
+auto get_write_time(const fs::path& filename) -> time_t
+{
+    return to_time_t(fs::last_write_time(filename));
+}
+
+// Format to parse is <obj>: cpp heade1 header2 ...
+auto parse_deps_str_and_check_is_changed(const std::string_view deps, const std::string_view target) -> bool
+{
+    auto target_time = get_write_time(target);
+    enum class State 
+    {
+        NONE,
+        PREFIX,
+        WORD,
+    } state = State::PREFIX;
+    size_t start;
+    for (size_t i = 0; i < deps.size(); i++)
+    {
+        auto c = deps[i];
+        if (state == State::PREFIX && c == ':')
+        {
+            state = State::NONE;
+        }
+        else if (state == State::NONE && !(std::isspace(c) || c == '\\'))
+        {
+            state = State::WORD;
+            start = i;
+        }
+        else if (state == State::WORD && (std::isspace(c) || c == '\\'))
+        {
+            state = State::NONE;
+            auto dep = deps.substr(start, i - start);
+            if (!fs::exists(dep))
+            {
+                std::cout << "[BUILD][WARNING] Could not find file: " << dep << std::endl;
+                return true;
+            }
+            auto time = get_write_time(dep);
+            if (time > target_time)
+                return true;
+        }
+    }
+
+    return false;
+}
+
+auto get_output_filepath(const fs::path& input) -> fs::path
+{
+    const auto rel = input.relative_path();
+    std::string output = {};
+    for (auto it = rel.begin(); it != rel.end(); it++)
+    {
+        if (*it != "..")
+            output += *it;
+        else
+            output += "xx";
+    }
+    output += ".o";
+
+    return BUILD_TEMP_FOLDER / output;
+}
+
+auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optional<std::string>
+{
+    auto output = get_output_filepath(filename_cpp).string();
+    bool should_rebuild = true;
+    if (fs::exists(output))
+    {
+        std::string command_to_get_deps  = "g++ -MM ";
+        command_to_get_deps += filename_cpp.string() + " " + flags;
+        auto deps_str = linux_call(command_to_get_deps.c_str());
+
+        should_rebuild = parse_deps_str_and_check_is_changed(deps_str, output);
+    }
+
+    if (should_rebuild)
+    {
+        std::string compile_command = std::string("g++ -c ") + filename_cpp.c_str() 
+            + " -o " + output + " " 
+            + flags; 
+        std::cout << "[COMPILE] " << compile_command << std::endl;
+        int res = system(compile_command.c_str());
+        if (res != 0)
+            return std::nullopt;
+    }
+    return output;
+}
+
+auto link_files(const std::vector<std::optional<std::string>>& files) -> bool
+{
+    bool has_app = fs::exists(APP_PATH);
+    time_t app_time = has_app ? get_write_time(APP_PATH) : time_t{};
+
+    bool should_rebuild = !has_app;
+    auto link_command = std::string("g++ -o ") + APP_PATH.string() + " "; 
+    for (const auto& f: files)
+    {
+        if (!f.has_value())
+            return false;
+        should_rebuild = should_rebuild || (get_write_time(f.value()) > app_time);
+        link_command += f.value() + " ";
+    }
+    // LINKING flags -L and -l should be at the end
+    // https://stackoverflow.com/questions/18827938/strange-g-linking-behavior-depending-on-arguments-order
+    link_command += ADDITIONAL_LINK_FLAGS;
+    bool result = true;
+    if (should_rebuild)
+    {
+        std::cout << "[LINK] " << link_command << std::endl;
+        if (files.empty())
+        {
+            printf("[ERROR] No files to link!\n");
+            return false;
+        }
+        result = system(link_command.c_str()) == 0;
+    }
+    return result;
+}
+
+auto ar_glfw_files(const std::vector<std::optional<std::string>>& files, const char* flags) -> bool
+{
+    bool has_app = fs::exists(GLFW_LIB_PATH);
+    time_t app_time = has_app ? get_write_time(GLFW_LIB_PATH) : time_t{};
+
+    bool should_rebuild = !has_app;
+    auto link_command = std::string("ar rsv ") + GLFW_LIB_PATH.string() + " "; 
+    for (const auto& f: files)
+    {
+        if (!f.has_value())
+            return false;
+        should_rebuild = should_rebuild || (get_write_time(f.value()) > app_time);
+        link_command += f.value() + " ";
+    }
+
+    bool result = true;
+    if (should_rebuild)
+    {
+        std::cout << "[LINK] " << link_command << std::endl;
+        result = system(link_command.c_str()) == 0;
+    }
+    return result;
+}
+
+auto compile_shader(const fs::path& shader_txt) -> void
+{
+    fs::path output = BUILD_SHADER_FOLDER / 
+        fs::path{ shader_txt.stem().string() + "_" + shader_txt.extension().string().substr(1) + ".spv" };
+
+    bool should_rebuild = false;
+    if (fs::exists(output))
+    {
+        if (fs::exists(shader_txt))
+            should_rebuild = get_write_time(shader_txt) > get_write_time(output);
+        else
+            should_rebuild = true;
+    }
+    else
+        should_rebuild = true;
+
+    if (should_rebuild)
+    {
+        std::string compile_command  = "glslc ";
+        compile_command += shader_txt.string() + " -o ";
+        compile_command += output.string();
+
+        std::cout << "[COMPILE] " << compile_command << std::endl;
+        system(compile_command.c_str());
+    }
+}
+
+auto run_app()
+{
+    std::string run_command  = std::string("cd ") + BUILD_FOLDER.string() 
+        + " && " + "./" + APP_NAME.string()
+        + " && cd ..";
+    system(run_command.c_str());
+}
+
+int main(int argc, char *argv[])
+{
+    if (!fs::exists(BUILD_FOLDER))
+        fs::create_directory(BUILD_FOLDER);
+
+    if (!fs::exists(BUILD_TEMP_FOLDER))
+        fs::create_directory(BUILD_TEMP_FOLDER);
+
+    if (!fs::exists(BUILD_SHADER_FOLDER))
+        fs::create_directory(BUILD_SHADER_FOLDER);
+
+    std::vector<std::optional<std::string>> o_files = {};
+    std::vector<std::optional<std::string>> o_glfw_files = {};
+
+    for (auto cpp :GLFW_CPP_FILES)
+        o_glfw_files.push_back(compile_file(cpp, ADDITIONAL_COMPILER_FLAGS_GLFW));
+
+    if (!ar_glfw_files(o_glfw_files, nullptr))
+        return 1;
+
+    for (auto cpp : CPP_FILES)
+        o_files.push_back(compile_file(cpp, ADDITIONAL_COMPILER_FLAGS));
+
+    for (auto shader : SHADERS)
+        compile_shader(shader);
+
+    int result = link_files(o_files) ? 0 : 1;
+    
+    if ((result == 0) && (argc > 1) && (std::string(argv[1]) == "run"))
+        run_app();
+
+    return result;
+}
