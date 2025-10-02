@@ -17,10 +17,10 @@ namespace fs = std::filesystem;
 static const fs::path BUILD_FOLDER = fs::path("build");
 static const fs::path BUILD_TEMP_FOLDER = BUILD_FOLDER / fs::path("temp");
 static const fs::path BUILD_SHADER_FOLDER = BUILD_FOLDER / fs::path("shaders");
-static const fs::path APP_NAME = fs::path("ox");
+static const fs::path APP_NAME = fs::path("engi");
 static const fs::path APP_PATH = BUILD_FOLDER / APP_NAME;
 static const fs::path GLFW_LIB_PATH = BUILD_FOLDER / fs::path("libglfw.a");
-static const char* ADDITIONAL_COMPILER_FLAGS = "-std=c++23 -DOX_RENDER_DEBUG"" " 
+static const char* ADDITIONAL_COMPILER_FLAGS = "-std=c++23 -DENGI_RENDER_DEBUG"" " 
                                                 "-Isrc -Iexternal/glfw/include"" "
                                                 "-Iexternal/vma -Iexternal/stb" " ";
 static const char* ADDITIONAL_COMPILER_FLAGS_GLFW = "-w -O3 -D_GLFW_X11=1 -Iexternal/glfw/src -Iexternal/glfw/include -fpermissive"" ";
@@ -33,6 +33,7 @@ static const std::array CPP_FILES =
 {
     "src/main.cpp",
     "src/app.cpp",
+    "src/rendering.cpp"
 };
 
 #define GLFW_SRC "external/glfw/src/"
@@ -44,7 +45,6 @@ static const std::array GLFW_CPP_FILES =
     GLFW_SRC"x11_window.c", 
     GLFW_SRC"monitor.c", 
     GLFW_SRC"posix_thread.c", 
-    GLFW_SRC"posix_time.h", 
     GLFW_SRC"x11_init.c", 
     GLFW_SRC"context.c", 
     GLFW_SRC"posix_time.c", 
@@ -159,9 +159,14 @@ auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optio
 {
     auto output = get_output_filepath(filename_cpp).string();
     bool should_rebuild = true;
+
+    std::string compiler = "g++";
+    if (filename_cpp.extension() == ".c")
+        compiler = "gcc";
+
     if (fs::exists(output))
     {
-        std::string command_to_get_deps  = "g++ -MM ";
+        std::string command_to_get_deps  = compiler + " -MM ";
         command_to_get_deps += filename_cpp.string() + " " + flags;
         auto deps_str = linux_call(command_to_get_deps.c_str());
 
@@ -170,7 +175,7 @@ auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optio
 
     if (should_rebuild)
     {
-        std::string compile_command = std::string("g++ -c ") + filename_cpp.c_str() 
+        std::string compile_command = compiler + " -c " + filename_cpp.c_str() 
             + " -o " + output + " " 
             + flags; 
         std::cout << "[COMPILE] " << compile_command << std::endl;
@@ -181,7 +186,7 @@ auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optio
     return output;
 }
 
-auto link_files_dynamic(const std::vector<std::optional<fs::path>>& files, const fs::path output_path) -> bool
+auto link_files_dynamic(const std::vector<std::optional<fs::path>>& files, const fs::path output_path, const char* flags) -> bool
 {
     bool has_app = fs::exists(output_path);
     time_t app_time = has_app ? get_write_time(output_path) : time_t{};
@@ -197,7 +202,7 @@ auto link_files_dynamic(const std::vector<std::optional<fs::path>>& files, const
     }
     // LINKING flags -L and -l should be at the end
     // https://stackoverflow.com/questions/18827938/strange-g-linking-behavior-depending-on-arguments-order
-    link_command += ADDITIONAL_LINK_FLAGS;
+    link_command += flags;
     bool result = true;
     if (should_rebuild)
     {
@@ -297,7 +302,7 @@ int main(int argc, char *argv[])
     for (auto shader : SHADERS)
         compile_shader(shader);
 
-    bool link_success = link_files_dynamic(o_files, APP_PATH);
+    bool link_success = link_files_dynamic(o_files, APP_PATH, ADDITIONAL_LINK_FLAGS);
     
     if (link_success && (argc > 1) && (std::string(argv[1]) == "run"))
         run_app();

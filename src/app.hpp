@@ -22,17 +22,17 @@ private:
     static auto fnKeyPressExterior(GLFWwindow* window, int key, int scancode, int action, int mods) -> void;
     static auto fnMousePressExterior(GLFWwindow* window, int button, int action, int mods) -> void;
     static auto fnMouseMoveExterior(GLFWwindow* window, double x, double y) -> void;
-    static auto fnScrollExterior(GLFWwindow* window, double xOffset, double yOffset) -> void;
+    static auto fnScrollExterior(GLFWwindow* window, double xoffset, double yoffset) -> void;
     static auto fnResizeExterior(GLFWwindow* window, int width,int height) -> void;
 
-    auto fnTextInputInterior(unsigned int codepoint) -> void;
-    auto fnKeyPressInterior(int key, int scancode, int action, int mods) -> void;
-    auto fnMousePressInterior(int button, int action, int mods) -> void;
-    auto fnMouseMoveInterior(double x, double y) -> void;
-    auto fnScrollInterior(double xOffset, double yOffset) -> void;
-    auto fnResizeInterior(int width,int height) -> void;
+    auto fn_text_input_interior(unsigned int codepoint) -> void;
+    auto fn_key_press_interior(int key, int scancode, int action, int mods) -> void;
+    auto fn_mouse_press_interior(int button, int action, int mods) -> void;
+    auto fn_mouse_move_interior(double x, double y) -> void;
+    auto fn_scroll_interior(double xoffset, double yoffset) -> void;
+    auto fn_resize_interior(int width,int height) -> void;
 
 private:
-    GLFWwindow* mGLFWWindow;
+    GLFWwindow* m_glfw_window;
 };
 }

@@ -4,4 +4,4 @@
 -Iexternal/stb
 -std=c++23
 -Wno-misc-definition-inheaders
--DOX_RENDER_DEBUG
+-DENGI_RENDER_DEBUG
