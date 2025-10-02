@@ -20,7 +20,7 @@ static const fs::path BUILD_SHADER_FOLDER = BUILD_FOLDER / fs::path("shaders");
 static const fs::path APP_NAME = fs::path("ox");
 static const fs::path APP_PATH = BUILD_FOLDER / APP_NAME;
 static const fs::path GLFW_LIB_PATH = BUILD_FOLDER / fs::path("libglfw.a");
-static const char* ADDITIONAL_COMPILER_FLAGS = "-std=c++20 -DOX_RENDER_DEBUG"" " 
+static const char* ADDITIONAL_COMPILER_FLAGS = "-std=c++23 -DOX_RENDER_DEBUG"" " 
                                                 "-Isrc -Iexternal/glfw/include"" "
                                                 "-Iexternal/vma -Iexternal/stb" " ";
 static const char* ADDITIONAL_COMPILER_FLAGS_GLFW = "-w -O3 -D_GLFW_X11=1 -Iexternal/glfw/src -Iexternal/glfw/include -fpermissive"" ";
@@ -29,28 +29,10 @@ static const char* ADDITIONAL_LINK_FLAGS = "-Lbuild -lvulkan -ldl -lpthread -lX1
 
 #define RENDER_DIR "src/render"
 #define PIPELINES_DIR RENDER_DIR"/pipelines"
-static const std::array<const char*, 0> CPP_FILES = 
+static const std::array CPP_FILES = 
 {
-    /*RENDER_DIR"/render.cpp",
-    RENDER_DIR"/vma_impl.cpp",
-    RENDER_DIR"/rendercommon.cpp",
-    RENDER_DIR"/renderwindow.cpp",
-    RENDER_DIR"/renderview3d.cpp",
-    RENDER_DIR"/rendershape2d.cpp",
-    RENDER_DIR"/res/resbuffers.cpp",
-    RENDER_DIR"/rendertext2d.cpp",
-    PIPELINES_DIR"/mesh3d_pp.cpp",
-    PIPELINES_DIR"/wireframe3d_pp.cpp",
-    PIPELINES_DIR"/uiblock_pp.cpp",
-    PIPELINES_DIR"/text2d_pp.cpp",
     "src/main.cpp",
     "src/app.cpp",
-    "src/fileutils.cpp",
-    "src/brep.cpp",
-    "src/topoplanesurface2.cpp",
-    "src/discretization.cpp",
-    "src/ui/ui.cpp",
-    "src/test2.cpp"*/
 };
 
 #define GLFW_SRC "external/glfw/src/"
@@ -173,7 +155,7 @@ auto get_output_filepath(const fs::path& input) -> fs::path
     return BUILD_TEMP_FOLDER / output;
 }
 
-auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optional<std::string>
+auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optional<fs::path>
 {
     auto output = get_output_filepath(filename_cpp).string();
     bool should_rebuild = true;
@@ -199,19 +181,19 @@ auto compile_file(const fs::path& filename_cpp, const char* flags) -> std::optio
     return output;
 }
 
-auto link_files(const std::vector<std::optional<std::string>>& files) -> bool
+auto link_files_dynamic(const std::vector<std::optional<fs::path>>& files, const fs::path output_path) -> bool
 {
-    bool has_app = fs::exists(APP_PATH);
-    time_t app_time = has_app ? get_write_time(APP_PATH) : time_t{};
+    bool has_app = fs::exists(output_path);
+    time_t app_time = has_app ? get_write_time(output_path) : time_t{};
 
     bool should_rebuild = !has_app;
-    auto link_command = std::string("g++ -o ") + APP_PATH.string() + " "; 
+    auto link_command = std::string("g++ -o ") + output_path.string() + " "; 
     for (const auto& f: files)
     {
         if (!f.has_value())
             return false;
         should_rebuild = should_rebuild || (get_write_time(f.value()) > app_time);
-        link_command += f.value() + " ";
+        link_command += f->string() + " ";
     }
     // LINKING flags -L and -l should be at the end
     // https://stackoverflow.com/questions/18827938/strange-g-linking-behavior-depending-on-arguments-order
@@ -230,19 +212,19 @@ auto link_files(const std::vector<std::optional<std::string>>& files) -> bool
     return result;
 }
 
-auto ar_glfw_files(const std::vector<std::optional<std::string>>& files, const char* flags) -> bool
+auto link_files_static(const std::vector<std::optional<fs::path>>& files, const fs::path output_path) -> bool
 {
-    bool has_app = fs::exists(GLFW_LIB_PATH);
-    time_t app_time = has_app ? get_write_time(GLFW_LIB_PATH) : time_t{};
+    bool has_app = fs::exists(output_path);
+    time_t app_time = has_app ? get_write_time(output_path) : time_t{};
 
     bool should_rebuild = !has_app;
-    auto link_command = std::string("ar rsv ") + GLFW_LIB_PATH.string() + " "; 
+    auto link_command = std::string("ar rsv ") + output_path.string() + " "; 
     for (const auto& f: files)
     {
         if (!f.has_value())
             return false;
         should_rebuild = should_rebuild || (get_write_time(f.value()) > app_time);
-        link_command += f.value() + " ";
+        link_command += f->string() + " ";
     }
 
     bool result = true;
@@ -300,14 +282,14 @@ int main(int argc, char *argv[])
     if (!fs::exists(BUILD_SHADER_FOLDER))
         fs::create_directory(BUILD_SHADER_FOLDER);
 
-    std::vector<std::optional<std::string>> o_files = {};
-    std::vector<std::optional<std::string>> o_glfw_files = {};
+    std::vector<std::optional<fs::path>> o_files = {};
+    std::vector<std::optional<fs::path>> o_glfw_files = {};
 
     for (auto cpp :GLFW_CPP_FILES)
         o_glfw_files.push_back(compile_file(cpp, ADDITIONAL_COMPILER_FLAGS_GLFW));
 
-    if (!ar_glfw_files(o_glfw_files, nullptr))
-        return 1;
+    if (!link_files_static(o_glfw_files, GLFW_LIB_PATH))
+        return -1;
 
     for (auto cpp : CPP_FILES)
         o_files.push_back(compile_file(cpp, ADDITIONAL_COMPILER_FLAGS));
@@ -315,10 +297,10 @@ int main(int argc, char *argv[])
     for (auto shader : SHADERS)
         compile_shader(shader);
 
-    int result = link_files(o_files) ? 0 : 1;
+    bool link_success = link_files_dynamic(o_files, APP_PATH);
     
-    if ((result == 0) && (argc > 1) && (std::string(argv[1]) == "run"))
+    if (link_success && (argc > 1) && (std::string(argv[1]) == "run"))
         run_app();
 
-    return result;
+    return link_success ? 0 : -1;
 }
