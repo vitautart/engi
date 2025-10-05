@@ -1,3 +1,4 @@
+#include "vk_mem_alloc.h"
 #include <algorithm>
 #include <optional>
 #include <rendercommon.hpp>
@@ -18,6 +19,11 @@
 
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+
+namespace RenderingConfig
+{
+    constexpr VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT;
+}
 
 namespace engi
 {
@@ -53,6 +59,20 @@ debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTyp
     return VK_FALSE;
 }
 
+struct ImageScope
+{
+    explicit ImageScope(const engi::Rendering::Image& image) : image(image){};
+    ImageScope() = delete;
+    ImageScope(const ImageScope&) = delete;
+    ImageScope(ImageScope&& other)
+    {
+        image = other.image;
+        other.image = {};
+    }
+    ~ImageScope(){ image.destroy(); }
+    engi::Rendering::Image image;
+};
+
 struct RenderingQueue 
 {
     uint32_t family = 0;
@@ -65,6 +85,12 @@ struct RenderingWindow
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkExtent2D extent = {0, 0};
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    std::vector<ImageScope> color_images;
+    std::vector<ImageScope> resolve_images;
+    std::vector<ImageScope> depth_images;
+    std::vector<VkSemaphore> image_semaphores;
+    std::vector<VkSemaphore> command_semaphores;
+    std::vector<VkFence> command_fences;
 };
 
 struct RenderingInstace
@@ -72,6 +98,7 @@ struct RenderingInstace
     VkInstance instance = VK_NULL_HANDLE;
     VkPhysicalDevice p_device = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
+    VmaAllocator allocator = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT debugger = VK_NULL_HANDLE;
     VkFormat depth_format = VK_FORMAT_UNDEFINED;
     VkFormat color_format = VK_FORMAT_UNDEFINED;
@@ -353,7 +380,7 @@ static auto create_queue_infos(const std::vector<RenderingQueue>& queues) -> std
     return infos;
 }
 
-static auto create_device() -> bool
+static auto create_device_and_queues() -> bool
 {
     if (!choose_queue_families())
         return false;
@@ -453,6 +480,35 @@ static auto create_device() -> bool
 
     auto result = vkCreateDevice(ins.p_device, &deviceInfo, nullptr, &ins.device);
     VK_CHECK_RETURN(result, "[ERROR] Device creation failed: {}");
+
+    vkGetDeviceQueue(ins.device, ins.gfx_queue.family, ins.gfx_queue.id, &ins.gfx_queue.queue);
+    vkGetDeviceQueue(ins.device, ins.present_queue.family, ins.present_queue.id, &ins.present_queue.queue);
+
+    return true;
+}
+
+static auto create_allocator() -> bool
+{
+    VmaAllocatorCreateInfo info = 
+    {
+        .flags = 0,
+        .physicalDevice = ins.p_device,
+        .device = ins.device,
+        /// Preferred size of a single `VkDeviceMemory` block to be allocated from large heaps > 1 GiB. Optional.
+        /** Set to 0 to use default, which is currently 256 MiB. */
+        .preferredLargeHeapBlockSize = 0,
+        .pAllocationCallbacks = nullptr,
+        .pDeviceMemoryCallbacks = nullptr,
+        //.frameInUseCount = 2,
+        .pHeapSizeLimit = nullptr,
+        .pVulkanFunctions = nullptr,
+        //.pRecordSettings = nullptr,
+        .instance = ins.instance,
+        .vulkanApiVersion = VK_API_VERSION_1_2
+    };
+
+    auto result = vmaCreateAllocator(&info, &ins.allocator);
+    VK_CHECK_RETURN(result, "[ERROR] Allocator creation failed: {}");
 
     return true;
 }
@@ -563,6 +619,132 @@ auto create_swapchain(GLFWwindow* window) -> bool
     return true;
 }
 
+static auto create_swapchain_images() -> bool
+{
+    using namespace engi::Rendering;
+    std::vector<VkImage> swapchain_images;
+    engi::vkenum(vkGetSwapchainImagesKHR, swapchain_images, ins.device, ins.win.swapchain);
+
+    VkImageCreateInfo image_info = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VkImageType::VK_IMAGE_TYPE_2D,
+        .extent = { ins.win.extent.width, ins.win.extent.height, 1}, 
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = RenderingConfig::samples,
+        .tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL,
+        .sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+    };
+
+    VkImageViewCreateInfo view_info = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .components = engi::get_std_rgba_comp_mapping(),
+        .subresourceRange = 
+        {
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    };
+
+    for (auto sw_image : swapchain_images)
+    {
+        view_info.image = VK_NULL_HANDLE; // will be added inside create method
+        view_info.format = ins.color_format;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+ 
+        Image image = {};
+        auto result = image.create(sw_image, view_info);
+        VK_CHECK_RETURN(result, "[ERROR] Couldn't create resolve images for swapchanin: {}");
+        ins.win.resolve_images.emplace_back(image);
+    }
+
+    for (auto _ : swapchain_images)
+    {
+        image_info.format = ins.color_format;
+        image_info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+        view_info.image = VK_NULL_HANDLE; // will be added inside create method
+        view_info.format = ins.color_format;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+       
+        Image image = {}; 
+        auto result = image.create(image_info, view_info);
+        VK_CHECK_RETURN(result, "[ERROR] Couldn't create color images for swapchanin: {}");
+        ins.win.color_images.emplace_back(image);
+    }
+
+    for (auto _ : swapchain_images)
+    {
+        image_info.format = ins.depth_format;
+        image_info.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+        view_info.image = VK_NULL_HANDLE; // will be added inside create method
+        view_info.format = ins.depth_format;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+        Image image = {}; 
+        auto result = image.create(image_info, view_info);
+        VK_CHECK_RETURN(result, "[ERROR] Couldn't create depth images for swapchanin: {}");
+        ins.win.depth_images.emplace_back(image);
+    }
+
+    return true;
+}
+
+static auto create_sync_data() -> bool
+{
+    VkSemaphoreCreateInfo info_sem = 
+    {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0
+    };
+
+    VkFenceCreateInfo info_fen = 
+    {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT
+    };
+
+    for (const auto& _ : ins.win.resolve_images)
+    {
+        VkSemaphore item;
+        auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
+        VK_CHECK_RETURN(result, "[ERROR] Semaphore creation failed: {}");
+        ins.win.image_semaphores.push_back(item);
+    }
+
+    for (const auto& _ : ins.win.resolve_images)
+    {
+        VkSemaphore item;
+        auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
+        VK_CHECK_RETURN(result, "[ERROR] Semaphore creation failed: {}");
+        ins.win.command_semaphores.push_back(item);
+    }
+
+    for (const auto& _ : ins.win.resolve_images)
+    {
+        VkFence item;
+        auto result = vkCreateFence(ins.device, &info_fen, nullptr, &item);
+        VK_CHECK_RETURN(result, "[ERROR] Fence creation failed: {}");
+        ins.win.command_fences.push_back(item);
+    }
+    return true;
+}
+
 auto print_device_info() -> void
 {
     VkPhysicalDeviceProperties props;
@@ -581,18 +763,37 @@ auto engi::Rendering::init(GLFWwindow* window) noexcept -> bool
     if (!create_instance()) { destroy(); return false; }
     if (!create_debugger()) { destroy(); return false; }
     if (!choose_physical_device()) { destroy(); return false; }
-    if (!create_device()) { destroy(); return false; }
+    if (!create_device_and_queues()) { destroy(); return false; }
+    if (!create_allocator()) { destroy(); return false; }
 
     print_device_info();
 
     if (!create_surface(window)) { destroy(); return false; }
     if (!create_swapchain(window)) { destroy(); return false; }
+    if (!create_swapchain_images()) { destroy(); return false; }
+    if (!create_sync_data()) { destroy(); return false; }
 
     return true;
 }
 
 auto engi::Rendering::destroy() noexcept -> void
 {
+    for (auto semaphore : ins.win.image_semaphores)
+        vkDestroySemaphore(ins.device, semaphore, nullptr);
+    ins.win.image_semaphores.clear();
+
+    for (auto semaphore : ins.win.command_semaphores)
+        vkDestroySemaphore(ins.device, semaphore, nullptr);
+    ins.win.command_semaphores.clear();
+
+    for (auto fence : ins.win.command_fences)
+        vkDestroyFence(ins.device, fence, nullptr);
+    ins.win.command_fences.clear();
+
+    ins.win.color_images.clear();
+    ins.win.depth_images.clear();
+    ins.win.resolve_images.clear();
+
     if (ins.win.swapchain)
     {
         vkDestroySwapchainKHR(ins.device, ins.win.swapchain, nullptr);
@@ -603,6 +804,12 @@ auto engi::Rendering::destroy() noexcept -> void
     {
         vkDestroySurfaceKHR(ins.instance, ins.win.surface, nullptr);
         ins.win.surface = VK_NULL_HANDLE;
+    }
+
+    if (ins.allocator)
+    {
+        vmaDestroyAllocator(ins.allocator);
+        ins.allocator = VK_NULL_HANDLE;
     }
 
     if (ins.device)
@@ -623,4 +830,48 @@ auto engi::Rendering::destroy() noexcept -> void
         vkDestroyInstance(ins.instance, nullptr);
         ins.instance = VK_NULL_HANDLE;
     }
+}
+
+auto engi::Rendering::Image::create(const VkImageCreateInfo& image_info, const VkImageViewCreateInfo& view_info) -> VkResult
+{
+    VmaAllocation allocation;
+    VmaAllocationInfo alloc_info;
+    VmaAllocationCreateInfo alloc_create_info = { .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY };
+
+    auto result = vmaCreateImage(ins.allocator, &image_info, &alloc_create_info, &this->image, &this->memory, &alloc_info);
+    if (result != VK_SUCCESS) return result;
+
+    VkImageViewCreateInfo view_info_copy = view_info;
+    view_info_copy.image = this->image;
+    result = vkCreateImageView(ins.device, &view_info_copy, nullptr, &this->view);
+    if (result != VK_SUCCESS) return result;
+
+    this->format = image_info.format;
+
+    return result;
+}
+
+auto engi::Rendering::Image::create(VkImage vk_image, const VkImageViewCreateInfo& view_info) -> VkResult
+{
+    VkImageViewCreateInfo view_info_copy = view_info;
+    view_info_copy.image = vk_image;
+    auto result = vkCreateImageView(ins.device, &view_info_copy, nullptr, &this->view);
+    if (result != VK_SUCCESS) return result;
+
+    this->format = view_info.format;
+    this->memory = VK_NULL_HANDLE;
+    this->image = vk_image;
+
+    return result;
+}
+
+auto engi::Rendering::Image::destroy() -> void
+{
+    if (view)
+        vkDestroyImageView(ins.device, view, nullptr);
+    if (image && memory)
+        vmaDestroyImage(ins.allocator, image, memory);
+    view = VK_NULL_HANDLE;
+    image = VK_NULL_HANDLE;
+    memory = VK_NULL_HANDLE;
 }

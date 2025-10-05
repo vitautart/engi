@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 
 
 #define VK_CHECK_RETURN(result, msg) if (result != VK_SUCCESS) { std::println(msg, (int)result); return false; } 
@@ -30,6 +31,17 @@ auto vkenum(FUNC pFunc, std::vector<OUT>& pOut, IN... pIn) noexcept -> void
     pFunc(pIn..., &count, nullptr);
     pOut = std::vector<OUT>(count);
     return pFunc(pIn..., &count, pOut.data());
+}
+
+consteval auto get_std_rgba_comp_mapping() -> VkComponentMapping
+{
+    return VkComponentMapping
+    {
+        .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+        .a = VK_COMPONENT_SWIZZLE_IDENTITY
+    };
 }
 
 }
