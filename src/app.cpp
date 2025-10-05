@@ -94,7 +94,7 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
     glfwSetWindowSizeCallback(app->m_glfw_window, fnResizeExterior);
     glfwSetWindowUserPointer(app->m_glfw_window, app.get());
 
-    engi::Rendering::init();
+    engi::Rendering::init(app->m_glfw_window);
 
     return app;
 }

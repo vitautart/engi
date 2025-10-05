@@ -6,6 +6,7 @@
 
 #define VK_CHECK_RETURN(result, msg) if (result != VK_SUCCESS) { std::println(msg, (int)result); return false; } 
 #define VK_CHECK_PRINT(result, msg) if (result != VK_SUCCESS) { std::println(msg, (int)result); } 
+#define OPT_CHECK_RETURN(opt, msg) if (!opt.has_value()) { std::println(msg); return false; } 
 
 namespace engi {
     
