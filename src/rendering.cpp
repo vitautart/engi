@@ -1,4 +1,3 @@
-#include "vk_mem_alloc.h"
 #include <algorithm>
 #include <optional>
 #include <rendercommon.hpp>
@@ -23,6 +22,7 @@
 namespace RenderingConfig
 {
     constexpr VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT;
+    constexpr size_t frames = 2;
 }
 
 namespace engi
@@ -61,16 +61,16 @@ debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTyp
 
 struct ImageScope
 {
-    explicit ImageScope(const engi::Rendering::Image& image) : image(image){};
+    explicit ImageScope(const engi::Rendering::Image& image) : img(image){};
     ImageScope() = delete;
     ImageScope(const ImageScope&) = delete;
     ImageScope(ImageScope&& other)
     {
-        image = other.image;
-        other.image = {};
+        img = other.img;
+        other.img = {};
     }
-    ~ImageScope(){ image.destroy(); }
-    engi::Rendering::Image image;
+    ~ImageScope(){ img.destroy(); }
+    engi::Rendering::Image img;
 };
 
 struct RenderingQueue 
@@ -91,6 +91,10 @@ struct RenderingWindow
     std::vector<VkSemaphore> image_semaphores;
     std::vector<VkSemaphore> command_semaphores;
     std::vector<VkFence> command_fences;
+    VkCommandPool cmd_pool;
+    std::vector<VkCommandBuffer> main_cmd_buffers;
+    std::vector<VkCommandBuffer> color_cmd_buffers;
+    std::vector<VkCommandBuffer> present_cmd_buffers;
 };
 
 struct RenderingInstace
@@ -727,7 +731,7 @@ static auto create_sync_data() -> bool
         ins.win.image_semaphores.push_back(item);
     }
 
-    for (const auto& _ : ins.win.resolve_images)
+    for (size_t i = 0; i < RenderingConfig::frames; i++)
     {
         VkSemaphore item;
         auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
@@ -735,7 +739,7 @@ static auto create_sync_data() -> bool
         ins.win.command_semaphores.push_back(item);
     }
 
-    for (const auto& _ : ins.win.resolve_images)
+    for (size_t i = 0; i < RenderingConfig::frames; i++)
     {
         VkFence item;
         auto result = vkCreateFence(ins.device, &info_fen, nullptr, &item);
@@ -743,6 +747,128 @@ static auto create_sync_data() -> bool
         ins.win.command_fences.push_back(item);
     }
     return true;
+}
+
+static auto create_cmd_pool() -> bool
+{    
+    VkCommandPoolCreateInfo poolInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = ins.gfx_queue.family
+    };
+    auto result = vkCreateCommandPool(ins.device, &poolInfo, nullptr, &ins.win.cmd_pool);
+    VK_CHECK_RETURN(result, "[ERROR] Command buffer pool creation failed: {}");
+
+    return true;
+}
+
+static auto create_main_cmd_buffers() -> bool
+{
+    VkCommandBufferAllocateInfo info = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .commandPool = ins.win.cmd_pool,
+        .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = RenderingConfig::frames
+    };
+
+    std::vector<VkCommandBuffer> commandBuffers; commandBuffers.resize(info.commandBufferCount);
+    auto result = vkAllocateCommandBuffers(ins.device, &info, commandBuffers.data());
+    VK_CHECK_RETURN(result, "[ERROR] Command buffer allocation failed: {}");
+    ins.win.main_cmd_buffers = std::move(commandBuffers);
+
+    return true;
+}
+
+static auto record_transit_cmd_buffers() -> void;
+
+static auto create_transit_cmd_buffers() -> bool
+{
+    VkCommandBufferAllocateInfo info = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .commandPool = ins.win.cmd_pool,
+        .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = uint32_t(ins.win.resolve_images.size())
+    };
+    {
+        std::vector<VkCommandBuffer> commandBuffers; commandBuffers.resize(info.commandBufferCount);
+        auto result = vkAllocateCommandBuffers(ins.device, &info, commandBuffers.data());
+        VK_CHECK_RETURN(result, "[ERROR] Command buffer allocation failed: {}");
+        ins.win.color_cmd_buffers = std::move(commandBuffers);
+    }
+    {
+        std::vector<VkCommandBuffer> commandBuffers; commandBuffers.resize(info.commandBufferCount);
+        auto result = vkAllocateCommandBuffers(ins.device, &info, commandBuffers.data());
+        VK_CHECK_RETURN(result, "[ERROR] Command buffer allocation failed: {}");
+        ins.win.present_cmd_buffers = std::move(commandBuffers);
+    }
+
+    record_transit_cmd_buffers();
+    return true;
+}
+
+static auto record_transit_cmd_buffers() -> void
+{
+    VkCommandBufferBeginInfo cbBeginInfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    VkImageSubresourceRange common_range = 
+    {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
+
+    VkImageMemoryBarrier image_barrier_1 = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .subresourceRange = common_range
+    };
+
+    for (size_t i = 0; (i <  ins.win.color_cmd_buffers.size()) && (i < ins.win.resolve_images.size()); i++)
+    {
+        image_barrier_1.image = ins.win.resolve_images[i].img.image;
+
+        auto cb = ins.win.color_cmd_buffers[i];
+        vkResetCommandBuffer(cb, 0);
+        vkBeginCommandBuffer(cb, &cbBeginInfo);
+        vkCmdPipelineBarrier(cb, 
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &image_barrier_1);
+        vkEndCommandBuffer(cb);
+    }
+
+    VkImageMemoryBarrier image_barrier_2 = 
+    {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .subresourceRange = common_range
+    };
+
+    for (size_t i = 0; (i <  ins.win.present_cmd_buffers.size()) && (i < ins.win.resolve_images.size()); i++)
+    {
+        image_barrier_2.image = ins.win.resolve_images[i].img.image;
+
+        auto cb = ins.win.present_cmd_buffers[i];
+        vkResetCommandBuffer(cb, 0);
+        vkBeginCommandBuffer(cb, &cbBeginInfo);
+        vkCmdPipelineBarrier(cb, 
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
+                0, 0, nullptr, 0, nullptr, 1, &image_barrier_2);
+        vkEndCommandBuffer(cb);
+    }
 }
 
 auto print_device_info() -> void
@@ -772,12 +898,30 @@ auto engi::Rendering::init(GLFWwindow* window) noexcept -> bool
     if (!create_swapchain(window)) { destroy(); return false; }
     if (!create_swapchain_images()) { destroy(); return false; }
     if (!create_sync_data()) { destroy(); return false; }
+    if (!create_cmd_pool()) { destroy(); return false; }
+    if (!create_main_cmd_buffers()) { destroy(); return false; }
+    if (!create_transit_cmd_buffers()) { destroy(); return false; }
 
     return true;
 }
 
 auto engi::Rendering::destroy() noexcept -> void
 {
+    if (auto& data = ins.win.color_cmd_buffers; !data.empty())
+        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
+    ins.win.color_cmd_buffers.clear();
+
+    if (auto& data = ins.win.present_cmd_buffers; !data.empty())
+        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
+    ins.win.present_cmd_buffers.clear();
+
+    if (auto& data = ins.win.main_cmd_buffers; !data.empty())
+        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
+    ins.win.main_cmd_buffers.clear();
+     
+    if (ins.win.cmd_pool)
+        vkDestroyCommandPool(ins.device, ins.win.cmd_pool, nullptr);
+
     for (auto semaphore : ins.win.image_semaphores)
         vkDestroySemaphore(ins.device, semaphore, nullptr);
     ins.win.image_semaphores.clear();
