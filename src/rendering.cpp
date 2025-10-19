@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <deque>
 #include <optional>
 #include <rendercommon.hpp>
 #include <rendering.hpp>
@@ -88,13 +89,16 @@ struct RenderingWindow
     std::vector<ImageScope> color_images;
     std::vector<ImageScope> resolve_images;
     std::vector<ImageScope> depth_images;
-    std::vector<VkSemaphore> image_semaphores;
+    std::deque<VkSemaphore> image_semaphores;
     std::vector<VkSemaphore> command_semaphores;
     std::vector<VkFence> command_fences;
-    VkCommandPool cmd_pool;
+    VkCommandPool cmd_pool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> main_cmd_buffers;
     std::vector<VkCommandBuffer> color_cmd_buffers;
     std::vector<VkCommandBuffer> present_cmd_buffers;
+    std::vector<VkCommandBuffer> work_cmd_buffers;
+    uint32_t image_id = 0;
+    uint32_t frame_id = 0;
 };
 
 struct RenderingInstace
@@ -903,6 +907,100 @@ auto engi::Rendering::init(GLFWwindow* window) noexcept -> bool
     if (!create_transit_cmd_buffers()) { destroy(); return false; }
 
     return true;
+}
+
+auto engi::Rendering::draw_start() -> AcquireResult
+{
+    const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
+    vkWaitForFences(ins.device, 1, &cmd_fence, VK_TRUE, UINT64_MAX);
+
+    auto img_semaphore = ins.win.image_semaphores.front();
+    ins.win.image_semaphores.pop_front();
+    ins.win.image_semaphores.push_back(img_semaphore);
+    
+    auto result = vkAcquireNextImageKHR(ins.device, ins.win.swapchain, 
+            UINT64_MAX, img_semaphore, nullptr, &ins.win.image_id);
+
+    ins.win.work_cmd_buffers.clear();
+    ins.win.work_cmd_buffers.push_back(ins.win.color_cmd_buffers[ins.win.image_id]);
+
+    return 
+    {
+        .id = ins.win.frame_id,
+        .image = ins.win.image_id,
+        .result = result,
+        .color_view = ins.win.color_images[ins.win.image_id].img.view,
+        .depth_view = ins.win.depth_images[ins.win.image_id].img.view,
+        .resolve_view = ins.win.resolve_images[ins.win.image_id].img.view
+    };
+}
+
+auto engi::Rendering::cmd_start() -> VkCommandBuffer
+{
+    auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
+    VkCommandBufferBeginInfo info = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+    vkBeginCommandBuffer(cmd, &info);
+
+    return cmd;
+}
+
+auto engi::Rendering::cmd_end() -> void
+{
+    auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
+    vkEndCommandBuffer(cmd);
+    ins.win.work_cmd_buffers.push_back(cmd);
+}
+
+auto engi::Rendering::draw_end() -> bool
+{
+    const auto cmd_semaphore = ins.win.command_semaphores[ins.win.frame_id];
+    const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
+
+    ins.win.work_cmd_buffers.push_back(ins.win.present_cmd_buffers[ins.win.image_id]);
+    
+    auto result = vkResetFences(ins.device, 1, &cmd_fence);
+
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSubmitInfo submit_info =
+    {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &ins.win.image_semaphores.back(),
+        .pWaitDstStageMask = waitStages,
+        .commandBufferCount = (uint32_t)ins.win.work_cmd_buffers.size(),
+        .pCommandBuffers = ins.win.work_cmd_buffers.data(),
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &cmd_semaphore
+    };
+    result = vkQueueSubmit(ins.gfx_queue.queue, 1, &submit_info, cmd_fence);
+
+    VkPresentInfoKHR present_info = 
+    {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &cmd_semaphore,
+        .swapchainCount = 1,
+        .pSwapchains = &ins.win.swapchain,
+        .pImageIndices = &ins.win.image_id
+    };
+    result = vkQueuePresentKHR(ins.present_queue.queue, &present_info);
+
+    ins.win.frame_id = (ins.win.frame_id + 1) % RenderingConfig::frames;
+    ins.win.work_cmd_buffers.clear();
+
+    return (result == VK_SUBOPTIMAL_KHR) || (result == VK_SUCCESS);
+}
+
+auto engi::Rendering::instance() noexcept -> VkInstance
+{
+    return ins.instance;
+}
+
+auto engi::Rendering::device() noexcept -> VkDevice
+{
+    return ins.device;
 }
 
 auto engi::Rendering::destroy() noexcept -> void

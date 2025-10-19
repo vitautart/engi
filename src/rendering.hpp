@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h> // AMD VULKAN ALLOCATION LIB
+#include <vulkan/vulkan_core.h>
 
 typedef struct GLFWwindow GLFWwindow;
 
@@ -19,6 +20,22 @@ namespace engi::Rendering
         auto destroy() -> void;
     };
 
+    struct AcquireResult
+    {
+        uint32_t id;
+        uint32_t image;
+        VkResult result;
+        VkImageView color_view;
+        VkImageView depth_view;
+        VkImageView resolve_view;
+    };
+
     auto init(GLFWwindow* window) noexcept -> bool;
+    auto draw_start() -> AcquireResult;
+    auto cmd_start() -> VkCommandBuffer;
+    auto cmd_end() -> void;
+    auto draw_end() -> bool;
     auto destroy() noexcept -> void;
+    auto instance() noexcept -> VkInstance;
+    auto device() noexcept -> VkDevice;
 }
