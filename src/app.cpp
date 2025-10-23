@@ -74,7 +74,7 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
 
     if (!glfwInit())
     {
-        std::println("[ERROR] Can't initialize glfw\n");
+        std::println("[ERROR] Can't initialize glfw");
         return  nullptr;
     }
 
@@ -83,7 +83,7 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
     app->m_glfw_window = glfwCreateWindow(800, 600, "HomeCAD", NULL, NULL);
     if (!app->m_glfw_window)
     {
-        std::println("[ERROR] Can't create window\n");
+        std::println("[ERROR] Can't create window");
         return nullptr;
     }
     glfwSetCharCallback(app->m_glfw_window, fnTextInputExterior);
@@ -94,14 +94,18 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
     glfwSetWindowSizeCallback(app->m_glfw_window, fnResizeExterior);
     glfwSetWindowUserPointer(app->m_glfw_window, app.get());
 
-    engi::Rendering::init(app->m_glfw_window);
+    if (!engi::vk::init(app->m_glfw_window))
+    {
+        std::println("[ERROR] Can't init rendering systen");
+        return nullptr;
+    }
 
     return app;
 }
 
 engi::App::~App() noexcept
 {
-    engi::Rendering::destroy();
+    engi::vk::destroy();
     glfwDestroyWindow(m_glfw_window);
     glfwTerminate();
 }

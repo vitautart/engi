@@ -1,15 +1,16 @@
+#include <cstddef>
+#define VMA_IMPLEMENTATION // should be before aby includes
+
 #include <algorithm>
 #include <deque>
 #include <optional>
-#include <rendercommon.hpp>
-#include <rendering.hpp>
-#include <vulkan/vulkan.h>
-#include <vulkan/vulkan_core.h>
 #include <print>
 #include <cassert>
 #include <vector>
 #include <set>
-#include <GLFW/glfw3.h>
+
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #if defined(__linux)
 #include <X11/Xlib.h>
@@ -19,6 +20,9 @@
 
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+
+#include <rendercommon.hpp>
+#include <rendering.hpp>
 
 namespace RenderingConfig
 {
@@ -60,20 +64,6 @@ debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTyp
     return VK_FALSE;
 }
 
-struct ImageScope
-{
-    explicit ImageScope(const engi::Rendering::Image& image) : img(image){};
-    ImageScope() = delete;
-    ImageScope(const ImageScope&) = delete;
-    ImageScope(ImageScope&& other)
-    {
-        img = other.img;
-        other.img = {};
-    }
-    ~ImageScope(){ img.destroy(); }
-    engi::Rendering::Image img;
-};
-
 struct RenderingQueue 
 {
     uint32_t family = 0;
@@ -86,9 +76,9 @@ struct RenderingWindow
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkExtent2D extent = {0, 0};
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    std::vector<ImageScope> color_images;
-    std::vector<ImageScope> resolve_images;
-    std::vector<ImageScope> depth_images;
+    std::vector<engi::vk::Image> color_images;
+    std::vector<engi::vk::Image> resolve_images;
+    std::vector<engi::vk::Image> depth_images;
     std::deque<VkSemaphore> image_semaphores;
     std::vector<VkSemaphore> command_semaphores;
     std::vector<VkFence> command_fences;
@@ -629,7 +619,7 @@ auto create_swapchain(GLFWwindow* window) -> bool
 
 static auto create_swapchain_images() -> bool
 {
-    using namespace engi::Rendering;
+    using namespace engi::vk;
     std::vector<VkImage> swapchain_images;
     engi::vkenum(vkGetSwapchainImagesKHR, swapchain_images, ins.device, ins.win.swapchain);
 
@@ -672,10 +662,9 @@ static auto create_swapchain_images() -> bool
         view_info.format = ins.color_format;
         view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
  
-        Image image = {};
-        auto result = image.create(sw_image, view_info);
-        VK_CHECK_RETURN(result, "[ERROR] Couldn't create resolve images for swapchanin: {}");
-        ins.win.resolve_images.emplace_back(image);
+        auto image = Image::create(sw_image, view_info);
+        RES_CHECK_RETURN(image, "[ERROR] Couldn't create resolve images for swapchanin: {}");
+        ins.win.resolve_images.emplace_back(std::move(image.value()));
     }
 
     for (auto _ : swapchain_images)
@@ -687,10 +676,9 @@ static auto create_swapchain_images() -> bool
         view_info.format = ins.color_format;
         view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
        
-        Image image = {}; 
-        auto result = image.create(image_info, view_info);
-        VK_CHECK_RETURN(result, "[ERROR] Couldn't create color images for swapchanin: {}");
-        ins.win.color_images.emplace_back(image);
+        auto image = Image::create(image_info, view_info);
+        RES_CHECK_RETURN(image, "[ERROR] Couldn't create color images for swapchanin: {}");
+        ins.win.color_images.emplace_back(std::move(image.value()));
     }
 
     for (auto _ : swapchain_images)
@@ -702,10 +690,9 @@ static auto create_swapchain_images() -> bool
         view_info.format = ins.depth_format;
         view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 
-        Image image = {}; 
-        auto result = image.create(image_info, view_info);
-        VK_CHECK_RETURN(result, "[ERROR] Couldn't create depth images for swapchanin: {}");
-        ins.win.depth_images.emplace_back(image);
+        auto image = Image::create(image_info, view_info);
+        RES_CHECK_RETURN(image, "[ERROR] Couldn't create depth images for swapchanin: {}");
+        ins.win.depth_images.emplace_back(std::move(image.value()));
     }
 
     return true;
@@ -839,7 +826,7 @@ static auto record_transit_cmd_buffers() -> void
 
     for (size_t i = 0; (i <  ins.win.color_cmd_buffers.size()) && (i < ins.win.resolve_images.size()); i++)
     {
-        image_barrier_1.image = ins.win.resolve_images[i].img.image;
+        image_barrier_1.image = ins.win.resolve_images[i].image();
 
         auto cb = ins.win.color_cmd_buffers[i];
         vkResetCommandBuffer(cb, 0);
@@ -862,7 +849,7 @@ static auto record_transit_cmd_buffers() -> void
 
     for (size_t i = 0; (i <  ins.win.present_cmd_buffers.size()) && (i < ins.win.resolve_images.size()); i++)
     {
-        image_barrier_2.image = ins.win.resolve_images[i].img.image;
+        image_barrier_2.image = ins.win.resolve_images[i].image();
 
         auto cb = ins.win.present_cmd_buffers[i];
         vkResetCommandBuffer(cb, 0);
@@ -888,7 +875,7 @@ auto print_device_info() -> void
 
 }
 
-auto engi::Rendering::init(GLFWwindow* window) noexcept -> bool
+auto engi::vk::init(GLFWwindow* window) noexcept -> bool
 {
     if (!create_instance()) { destroy(); return false; }
     if (!create_debugger()) { destroy(); return false; }
@@ -909,7 +896,7 @@ auto engi::Rendering::init(GLFWwindow* window) noexcept -> bool
     return true;
 }
 
-auto engi::Rendering::draw_start() -> AcquireResult
+auto engi::vk::draw_start() -> AcquireResult
 {
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
     vkWaitForFences(ins.device, 1, &cmd_fence, VK_TRUE, UINT64_MAX);
@@ -929,13 +916,10 @@ auto engi::Rendering::draw_start() -> AcquireResult
         .id = ins.win.frame_id,
         .image = ins.win.image_id,
         .result = result,
-        .color_view = ins.win.color_images[ins.win.image_id].img.view,
-        .depth_view = ins.win.depth_images[ins.win.image_id].img.view,
-        .resolve_view = ins.win.resolve_images[ins.win.image_id].img.view
     };
 }
 
-auto engi::Rendering::cmd_start() -> VkCommandBuffer
+auto engi::vk::cmd_start() -> VkCommandBuffer
 {
     auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
     VkCommandBufferBeginInfo info = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
@@ -945,14 +929,76 @@ auto engi::Rendering::cmd_start() -> VkCommandBuffer
     return cmd;
 }
 
-auto engi::Rendering::cmd_end() -> void
+auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void
+{
+    VkViewport viewport = 
+    {
+        .x = (float)view.offset.x,
+        .y = (float)view.offset.y,
+        .width = (float)view.extent.width,
+        .height = (float)view.extent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+    };
+    VkRenderingAttachmentInfo colorAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = ins.win.color_images[ins.win.image_id].view(),
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VkResolveModeFlagBits::VK_RESOLVE_MODE_AVERAGE_BIT,
+        .resolveImageView = ins.win.resolve_images[ins.win.image_id].view(), 
+        .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = { .color = {0.1f, 0.2f, 0.2f, 1.0f} }
+    };
+    VkRenderingAttachmentInfo depthAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = ins.win.depth_images[ins.win.image_id].view(),
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VkResolveModeFlagBits::VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE, 
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .clearValue = { .depthStencil = {.depth = 1.0f, .stencil = 0} }
+    };
+
+    VkRenderingInfo renderingInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0, // TODO: maybe here can be something usefull
+        .renderArea = view,
+        .layerCount = 1, 
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachment,
+        .pDepthAttachment = &depthAttachment, 
+        .pStencilAttachment = nullptr
+    };
+
+    vkCmdBeginRendering(cmd, &renderingInfo);
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &view);
+}
+
+auto engi::vk::view_end(VkCommandBuffer cmd) -> void
+{
+    vkCmdEndRendering(cmd);
+}
+
+auto engi::vk::cmd_end() -> void
 {
     auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
     vkEndCommandBuffer(cmd);
     ins.win.work_cmd_buffers.push_back(cmd);
 }
 
-auto engi::Rendering::draw_end() -> bool
+auto engi::vk::draw_end() -> bool
 {
     const auto cmd_semaphore = ins.win.command_semaphores[ins.win.frame_id];
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
@@ -993,17 +1039,17 @@ auto engi::Rendering::draw_end() -> bool
     return (result == VK_SUBOPTIMAL_KHR) || (result == VK_SUCCESS);
 }
 
-auto engi::Rendering::instance() noexcept -> VkInstance
+auto engi::vk::instance() noexcept -> VkInstance
 {
     return ins.instance;
 }
 
-auto engi::Rendering::device() noexcept -> VkDevice
+auto engi::vk::device() noexcept -> VkDevice
 {
     return ins.device;
 }
 
-auto engi::Rendering::destroy() noexcept -> void
+auto engi::vk::destroy() noexcept -> void
 {
     if (auto& data = ins.win.color_cmd_buffers; !data.empty())
         vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
@@ -1074,46 +1120,72 @@ auto engi::Rendering::destroy() noexcept -> void
     }
 }
 
-auto engi::Rendering::Image::create(const VkImageCreateInfo& image_info, const VkImageViewCreateInfo& view_info) -> VkResult
+engi::vk::Image::Image(Image&& other) noexcept : Image{}
 {
+    swap(other);
+}
+
+auto engi::vk::Image::operator=(this Image& lhs, Image&& rhs) noexcept -> Image&
+{
+    lhs.swap(rhs); return lhs;
+}
+
+#define ENGI_SWAP_V(o1, field, o2) {auto m = o1.field; o1.field = o2.field; o2.field = m;}
+auto engi::vk::Image::swap(this Image& lhs, Image& rhs) noexcept -> void
+{
+    static_assert(offsetof(Image, m_image) == 0, "Swap needs to be updated");
+    static_assert(offsetof(Image, m_view) == 8, "Swap needs to be updated");
+    static_assert(offsetof(Image, m_format) == 16, "Swap needs to be updated");
+    static_assert(sizeof(Image) == (offsetof(Image, m_memory) + sizeof(VmaAllocation)), "Swap needs to be updated");
+    ENGI_SWAP_V(lhs, m_image, rhs);
+    ENGI_SWAP_V(lhs, m_view, rhs);
+    ENGI_SWAP_V(lhs, m_format, rhs);
+    ENGI_SWAP_V(lhs, m_memory, rhs);
+}
+
+auto engi::vk::Image::create(const VkImageCreateInfo& image_info, const VkImageViewCreateInfo& view_info) -> std::expected<Image, VkResult>
+{
+    Image output;
     VmaAllocation allocation;
     VmaAllocationInfo alloc_info;
     VmaAllocationCreateInfo alloc_create_info = { .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY };
 
-    auto result = vmaCreateImage(ins.allocator, &image_info, &alloc_create_info, &this->image, &this->memory, &alloc_info);
-    if (result != VK_SUCCESS) return result;
+    auto result = vmaCreateImage(ins.allocator, &image_info, &alloc_create_info, &output.m_image, &output.m_memory, &alloc_info);
+    if (result != VK_SUCCESS) return std::unexpected(result);
 
     VkImageViewCreateInfo view_info_copy = view_info;
-    view_info_copy.image = this->image;
-    result = vkCreateImageView(ins.device, &view_info_copy, nullptr, &this->view);
-    if (result != VK_SUCCESS) return result;
+    view_info_copy.image = output.m_image;
+    result = vkCreateImageView(ins.device, &view_info_copy, nullptr, &output.m_view);
+    if (result != VK_SUCCESS) return std::unexpected(result);
 
-    this->format = image_info.format;
+    output.m_format = image_info.format;
 
-    return result;
+    return output;
 }
 
-auto engi::Rendering::Image::create(VkImage vk_image, const VkImageViewCreateInfo& view_info) -> VkResult
+auto engi::vk::Image::create(VkImage vk_image, const VkImageViewCreateInfo& view_info) -> std::expected<Image, VkResult>
 {
+    Image output;
     VkImageViewCreateInfo view_info_copy = view_info;
     view_info_copy.image = vk_image;
-    auto result = vkCreateImageView(ins.device, &view_info_copy, nullptr, &this->view);
-    if (result != VK_SUCCESS) return result;
+    
+    auto result = vkCreateImageView(ins.device, &view_info_copy, nullptr, &output.m_view);
+    if (result != VK_SUCCESS) return std::unexpected(result);
 
-    this->format = view_info.format;
-    this->memory = VK_NULL_HANDLE;
-    this->image = vk_image;
+    output.m_format = view_info.format;
+    output.m_memory = VK_NULL_HANDLE;
+    output.m_image = vk_image;
 
-    return result;
+    return output;
 }
 
-auto engi::Rendering::Image::destroy() -> void
+engi::vk::Image::~Image()
 {
-    if (view)
-        vkDestroyImageView(ins.device, view, nullptr);
-    if (image && memory)
-        vmaDestroyImage(ins.allocator, image, memory);
-    view = VK_NULL_HANDLE;
-    image = VK_NULL_HANDLE;
-    memory = VK_NULL_HANDLE;
+    if (m_view)
+        vkDestroyImageView(ins.device, m_view, nullptr);
+    if (m_image && m_memory)
+        vmaDestroyImage(ins.allocator, m_image, m_memory);
+    m_view = VK_NULL_HANDLE;
+    m_image = VK_NULL_HANDLE;
+    m_memory = VK_NULL_HANDLE;
 }
