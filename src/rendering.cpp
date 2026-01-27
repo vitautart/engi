@@ -24,6 +24,8 @@
 #include <rendercommon.hpp>
 #include <rendering.hpp>
 
+#define ENGI_SWAP_V(o1, field, o2) {auto m = o1.field; o1.field = o2.field; o2.field = m;}
+
 namespace RenderingConfig
 {
     constexpr VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT;
@@ -1130,7 +1132,7 @@ auto engi::vk::Image::operator=(this Image& lhs, Image&& rhs) noexcept -> Image&
     lhs.swap(rhs); return lhs;
 }
 
-#define ENGI_SWAP_V(o1, field, o2) {auto m = o1.field; o1.field = o2.field; o2.field = m;}
+
 auto engi::vk::Image::swap(this Image& lhs, Image& rhs) noexcept -> void
 {
     static_assert(offsetof(Image, m_image) == 0, "Swap needs to be updated");
@@ -1148,7 +1150,7 @@ auto engi::vk::Image::create(const VkImageCreateInfo& image_info, const VkImageV
     Image output;
     VmaAllocation allocation;
     VmaAllocationInfo alloc_info;
-    VmaAllocationCreateInfo alloc_create_info = { .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_GPU_ONLY };
+    VmaAllocationCreateInfo alloc_create_info = { .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO };
 
     auto result = vmaCreateImage(ins.allocator, &image_info, &alloc_create_info, &output.m_image, &output.m_memory, &alloc_info);
     if (result != VK_SUCCESS) return std::unexpected(result);
@@ -1188,4 +1190,96 @@ engi::vk::Image::~Image()
     m_view = VK_NULL_HANDLE;
     m_image = VK_NULL_HANDLE;
     m_memory = VK_NULL_HANDLE;
+}
+
+engi::vk::Buffer::Buffer(Buffer&& other) noexcept : Buffer{}
+{
+    swap(other);
+}
+
+auto engi::vk::Buffer::operator=(this Buffer& lhs, Buffer&& rhs) noexcept -> Buffer&
+{
+    lhs.swap(rhs); return lhs;
+}
+
+auto engi::vk::Buffer::swap(this Buffer& lhs, Buffer& rhs) noexcept -> void
+{
+    static_assert(offsetof(Buffer, m_buffer) == 0, "Swap needs to be updated");
+    static_assert(offsetof(Buffer, m_ptr) == 8, "Swap needs to be updated");
+    static_assert(offsetof(Buffer, m_size) == 16, "Swap needs to be updated");
+    static_assert(sizeof(Buffer) == (offsetof(Buffer, m_memory) + sizeof(VmaAllocation)), "Swap needs to be updated");
+    ENGI_SWAP_V(lhs, m_buffer, rhs);
+    ENGI_SWAP_V(lhs, m_ptr, rhs);
+    ENGI_SWAP_V(lhs, m_size, rhs);
+    ENGI_SWAP_V(lhs, m_memory, rhs);
+}
+
+auto engi::vk::Buffer::create_cpu(const VkBufferCreateInfo& info) noexcept -> std::expected<Buffer, VkResult>
+{
+    Buffer out;
+    VmaAllocationInfo alloc_info;
+    VmaAllocationCreateInfo alloc_create_info = 
+    {
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT & 
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+        .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO
+    };
+    auto result = vmaCreateBuffer(ins.allocator, &info, &alloc_create_info, &out.m_buffer, &out.m_memory, &alloc_info);
+    if (result != VK_SUCCESS) return std::unexpected(result);
+
+    out.m_ptr = alloc_info.pMappedData;
+    out.m_size = info.size;
+
+    return out;
+}
+
+auto engi::vk::Buffer::create_gpu(const VkBufferCreateInfo& info) noexcept -> std::expected<Buffer, VkResult>
+{
+    Buffer out;
+    VmaAllocationInfo alloc_info;
+    VmaAllocationCreateInfo alloc_reate_info = 
+    {
+        .flags = 0,
+        .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
+    };
+    auto result = vmaCreateBuffer(ins.allocator, &info, &alloc_reate_info, &out.m_buffer, &out.m_memory, &alloc_info);
+    if (result != VK_SUCCESS) return std::unexpected(result);
+
+    out.m_ptr = nullptr;
+    out.m_size = info.size;
+
+    return out;
+}
+
+// https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
+/*auto engi::vk::Buffer::create_gpu_mapped(const VkBufferCreateInfo& info) noexcept -> std::expected<Buffer, VkResult>
+{
+    Buffer out;
+    VmaAllocationInfo alloc_info;
+    VmaAllocationCreateInfo alloc_create_info = 
+    {
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT & 
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT &
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT,
+        .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO
+    };
+    auto result = vmaCreateBuffer(ins.allocator, &info, &alloc_create_info, &out.m_buffer, &out.m_memory, &alloc_info);
+    if (result != VK_SUCCESS) return std::unexpected(result);
+
+    out.m_ptr = alloc_info.pMappedData;
+    out.m_size = info.size;
+
+    return out;
+}*/
+
+engi::vk::Buffer::~Buffer() noexcept
+{
+    if (m_buffer && m_memory)
+        vmaDestroyBuffer(ins.allocator, m_buffer, m_memory);
+}
+
+auto engi::vk::Buffer::write(const void* src, VkDeviceSize src_size, VkDeviceSize dst_offset) noexcept -> void
+{
+    if (m_ptr != nullptr)
+        memcpy((char*)m_ptr + dst_offset, src, src_size);
 }
