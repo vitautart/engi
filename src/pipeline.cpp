@@ -3,95 +3,165 @@
 #include <rendering.hpp>
 
 #include <array>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <utility>
 
 namespace engi::vk
 {
 
-// Shader configuration
-auto Pipeline::shaders(const ShaderSet& shader_set) -> Pipeline&
+// Shader file loading
+static std::vector<char> read_file(const std::string& path)
 {
-    m_shader_set = shader_set;
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file)
+        return {};
+    auto size = static_cast<size_t>(file.tellg());
+    std::vector<char> buffer(size);
+    file.seekg(0);
+    file.read(buffer.data(), static_cast<std::streamsize>(size));
+    return buffer;
+}
+
+auto PipelineBuilder::vertex_shader_from_file(const std::string& path) -> PipelineBuilder&
+{
+    auto code = read_file(path);
+    if (!code.empty())
+    {
+        VkShaderModuleCreateInfo info{
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .codeSize = code.size(),
+            .pCode = reinterpret_cast<const uint32_t*>(code.data())
+        };
+        vkCreateShaderModule(vk::device(), &info, nullptr, &m_vertex_shader);
+    }
+    return *this;
+}
+
+auto PipelineBuilder::fragment_shader_from_file(const std::string& path) -> PipelineBuilder&
+{
+    auto code = read_file(path);
+    if (!code.empty())
+    {
+        VkShaderModuleCreateInfo info{
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .codeSize = code.size(),
+            .pCode = reinterpret_cast<const uint32_t*>(code.data())
+        };
+        vkCreateShaderModule(vk::device(), &info, nullptr, &m_fragment_shader);
+    }
+    return *this;
+}
+
+// Pipeline RAII wrapper implementations
+engi::vk::Pipeline::Pipeline(VkPipeline pipeline) : m_pipeline(pipeline) {}
+
+engi::vk::Pipeline::~Pipeline()
+{
+    if (m_pipeline != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(vk::device(), m_pipeline, nullptr);
+    }
+}
+
+engi::vk::Pipeline::Pipeline(Pipeline&& other) noexcept : m_pipeline(VK_NULL_HANDLE)
+{
+    std::swap(m_pipeline, other.m_pipeline);
+}
+
+engi::vk::Pipeline& engi::vk::Pipeline::operator=(Pipeline&& other) noexcept
+{
+    if (this != &other)
+    {
+        Pipeline tmp(std::move(other));
+        std::swap(m_pipeline, tmp.m_pipeline);
+    }
     return *this;
 }
 
 // Render target configuration
-auto Pipeline::color_format(VkFormat format) -> Pipeline&
+auto PipelineBuilder::color_format(VkFormat format) -> PipelineBuilder&
 {
     m_color_format = format;
     return *this;
 }
 
-auto Pipeline::depth_format(VkFormat format) -> Pipeline&
+auto PipelineBuilder::depth_format(VkFormat format) -> PipelineBuilder&
 {
     m_depth_format = format;
     return *this;
 }
 
-auto Pipeline::samples(VkSampleCountFlagBits samples) -> Pipeline&
+auto PipelineBuilder::samples(VkSampleCountFlagBits samples) -> PipelineBuilder&
 {
     m_samples = samples;
     return *this;
 }
 
 // Input assembly
-auto Pipeline::topology(VkPrimitiveTopology topology) -> Pipeline&
+auto PipelineBuilder::topology(VkPrimitiveTopology topology) -> PipelineBuilder&
 {
     m_topology = topology;
     return *this;
 }
 
 // Rasterization
-auto Pipeline::polygon_mode(VkPolygonMode mode) -> Pipeline&
+auto PipelineBuilder::polygon_mode(VkPolygonMode mode) -> PipelineBuilder&
 {
     m_polygon_mode = mode;
     return *this;
 }
 
-auto Pipeline::cull_mode(VkCullModeFlags mode) -> Pipeline&
+auto PipelineBuilder::cull_mode(VkCullModeFlags mode) -> PipelineBuilder&
 {
     m_cull_mode = mode;
     return *this;
 }
 
-auto Pipeline::front_face(VkFrontFace face) -> Pipeline&
+auto PipelineBuilder::front_face(VkFrontFace face) -> PipelineBuilder&
 {
     m_front_face = face;
     return *this;
 }
 
-auto Pipeline::line_width(float width) -> Pipeline&
+auto PipelineBuilder::line_width(float width) -> PipelineBuilder&
 {
     m_line_width = width;
     return *this;
 }
 
 // Depth testing
-auto Pipeline::depth_test(bool enable) -> Pipeline&
+auto PipelineBuilder::depth_test(bool enable) -> PipelineBuilder&
 {
     m_depth_test = enable;
     return *this;
 }
 
-auto Pipeline::depth_write(bool enable) -> Pipeline&
+auto PipelineBuilder::depth_write(bool enable) -> PipelineBuilder&
 {
     m_depth_write = enable;
     return *this;
 }
 
-auto Pipeline::depth_compare_op(VkCompareOp op) -> Pipeline&
+auto PipelineBuilder::depth_compare_op(VkCompareOp op) -> PipelineBuilder&
 {
     m_depth_compare_op = op;
     return *this;
 }
 
 // Blending
-auto Pipeline::blend_attachment(const VkPipelineColorBlendAttachmentState& attachment) -> Pipeline&
+auto PipelineBuilder::blend_attachment(const VkPipelineColorBlendAttachmentState& attachment) -> PipelineBuilder&
 {
     m_blend_attachments.push_back(attachment);
     return *this;
 }
 
-auto Pipeline::alpha_blending() -> Pipeline&
+auto PipelineBuilder::alpha_blending() -> PipelineBuilder&
 {
     VkPipelineColorBlendAttachmentState blend
     {
@@ -109,7 +179,7 @@ auto Pipeline::alpha_blending() -> Pipeline&
     return *this;
 }
 
-auto Pipeline::additive_blending() -> Pipeline&
+auto PipelineBuilder::additive_blending() -> PipelineBuilder&
 {
     VkPipelineColorBlendAttachmentState blend
     {
@@ -127,7 +197,7 @@ auto Pipeline::additive_blending() -> Pipeline&
     return *this;
 }
 
-auto Pipeline::no_blending() -> Pipeline&
+auto PipelineBuilder::no_blending() -> PipelineBuilder&
 {
     VkPipelineColorBlendAttachmentState blend
     {
@@ -145,25 +215,35 @@ auto Pipeline::no_blending() -> Pipeline&
     return *this;
 }
 
+auto PipelineBuilder::add(const VkVertexInputBindingDescription& binding) -> PipelineBuilder&
+{
+    m_vertex_bindings.push_back(binding);
+    return *this;
+}
+
+auto PipelineBuilder::add(const VkVertexInputAttributeDescription& attribute) -> PipelineBuilder&
+{
+    m_vertex_attributes.push_back(attribute);
+    return *this;
+}
+
 // Build method
-auto Pipeline::build(VkPipelineLayout layout) -> std::expected<VkPipeline, VkResult>
+auto PipelineBuilder::build(VkPipelineLayout layout) -> std::expected<Pipeline, VkResult>
 {
     // Validate required components
-    if (!m_shader_set || m_shader_set->vertex_shader == VK_NULL_HANDLE)
+    if (m_vertex_shader == VK_NULL_HANDLE)
     {
         return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
     }
     
     // If no blend attachments specified, add default one
     if (m_blend_attachments.empty())
-    {
         no_blending();
-    }
     
     // Shader stages
     std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
     
-    if (m_shader_set->vertex_shader != VK_NULL_HANDLE)
+    if (m_vertex_shader != VK_NULL_HANDLE)
     {
         shader_stages.push_back(VkPipelineShaderStageCreateInfo
         {
@@ -171,13 +251,13 @@ auto Pipeline::build(VkPipelineLayout layout) -> std::expected<VkPipeline, VkRes
             .pNext = nullptr,
             .flags = 0,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = m_shader_set->vertex_shader,
+            .module = m_vertex_shader,
             .pName = "main",
             .pSpecializationInfo = nullptr
         });
     }
-    
-    if (m_shader_set->fragment_shader != VK_NULL_HANDLE)
+
+    if (m_fragment_shader != VK_NULL_HANDLE)
     {
         shader_stages.push_back(VkPipelineShaderStageCreateInfo
         {
@@ -185,7 +265,7 @@ auto Pipeline::build(VkPipelineLayout layout) -> std::expected<VkPipeline, VkRes
             .pNext = nullptr,
             .flags = 0,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = m_shader_set->fragment_shader,
+            .module = m_fragment_shader,
             .pName = "main",
             .pSpecializationInfo = nullptr
         });
@@ -197,10 +277,10 @@ auto Pipeline::build(VkPipelineLayout layout) -> std::expected<VkPipeline, VkRes
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
-        .vertexBindingDescriptionCount = static_cast<uint32_t>(m_shader_set->vertex_bindings.size()),
-        .pVertexBindingDescriptions = m_shader_set->vertex_bindings.data(),
-        .vertexAttributeDescriptionCount = static_cast<uint32_t>(m_shader_set->vertex_attributes.size()),
-        .pVertexAttributeDescriptions = m_shader_set->vertex_attributes.data()
+        .vertexBindingDescriptionCount = static_cast<uint32_t>(m_vertex_bindings.size()),
+        .pVertexBindingDescriptions = m_vertex_bindings.data(),
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(m_vertex_attributes.size()),
+        .pVertexAttributeDescriptions = m_vertex_attributes.data()
     };
     
     // Input assembly state
@@ -342,13 +422,25 @@ auto Pipeline::build(VkPipelineLayout layout) -> std::expected<VkPipeline, VkRes
     
     VkPipeline pipeline;
     VkResult result = vkCreateGraphicsPipelines(vk::device(), VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &pipeline);
-    
+
+    // Destroy shader modules we created (they are no longer needed after pipeline creation)
+    if (m_vertex_shader != VK_NULL_HANDLE)
+    {
+        vkDestroyShaderModule(vk::device(), m_vertex_shader, nullptr);
+        m_vertex_shader = VK_NULL_HANDLE;
+    }
+    if (m_fragment_shader != VK_NULL_HANDLE)
+    {
+        vkDestroyShaderModule(vk::device(), m_fragment_shader, nullptr);
+        m_fragment_shader = VK_NULL_HANDLE;
+    }
+
     if (result != VK_SUCCESS)
     {
         return std::unexpected(result);
     }
-    
-    return pipeline;
+
+    return Pipeline(pipeline);
 }
 
 } // namespace engi::vk

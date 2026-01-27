@@ -4,54 +4,81 @@
 #include <expected>
 #include <optional>
 #include <vector>
+#include <string>
 #include <vulkan/vulkan_core.h>
 
 namespace engi::vk
 {
 
-struct ShaderSet
-{
-    VkShaderModule vertex_shader = VK_NULL_HANDLE;
-    VkShaderModule fragment_shader = VK_NULL_HANDLE;
-    std::vector<VkVertexInputBindingDescription> vertex_bindings;
-    std::vector<VkVertexInputAttributeDescription> vertex_attributes;
-};
+class PipelineBuilder;
 
+// Move-only RAII wrapper for VkPipeline
 class Pipeline
 {
 public:
     Pipeline() = default;
-    ~Pipeline() = default;
+    explicit Pipeline(VkPipeline pipeline);
+    ~Pipeline();
 
-    // Builder methods
-    auto shaders(const ShaderSet& shader_set) -> Pipeline&;
-    
-    auto color_format(VkFormat format) -> Pipeline&;
-    auto depth_format(VkFormat format) -> Pipeline&;
-    auto samples(VkSampleCountFlagBits samples) -> Pipeline&;
-    
-    auto topology(VkPrimitiveTopology topology) -> Pipeline&;
-    auto polygon_mode(VkPolygonMode mode) -> Pipeline&;
-    auto cull_mode(VkCullModeFlags mode) -> Pipeline&;
-    auto front_face(VkFrontFace face) -> Pipeline&;
-    auto line_width(float width) -> Pipeline&;
-    
-    auto depth_test(bool enable) -> Pipeline&;
-    auto depth_write(bool enable) -> Pipeline&;
-    auto depth_compare_op(VkCompareOp op) -> Pipeline&;
-    
-    auto blend_attachment(const VkPipelineColorBlendAttachmentState& attachment) -> Pipeline&;
-    auto alpha_blending() -> Pipeline&;
-    auto additive_blending() -> Pipeline&;
-    auto no_blending() -> Pipeline&;
-    
-    // Build the pipeline
-    auto build(VkPipelineLayout layout) -> std::expected<VkPipeline, VkResult>;
+    Pipeline(const Pipeline&) = delete;
+    Pipeline& operator=(const Pipeline&) = delete;
+
+    Pipeline(Pipeline&& other) noexcept;
+    Pipeline& operator=(Pipeline&& other) noexcept;
+
+    VkPipeline get() const { return m_pipeline; }
 
 private:
-    // Shader set
-    std::optional<ShaderSet> m_shader_set;
+    VkPipeline m_pipeline = VK_NULL_HANDLE;
+};
+
+class PipelineBuilder
+{
+public:
+    PipelineBuilder() = default;
+    ~PipelineBuilder() = default;
+
+    // File-based shader creation
+    auto vertex_shader_from_file(const std::string& path) -> PipelineBuilder&;
+    auto fragment_shader_from_file(const std::string& path) -> PipelineBuilder&;
+
+    // Render target configuration
+    auto color_format(VkFormat format) -> PipelineBuilder&;
+    auto depth_format(VkFormat format) -> PipelineBuilder&;
+    auto samples(VkSampleCountFlagBits samples) -> PipelineBuilder&;
     
+    // Input assembly
+    auto topology(VkPrimitiveTopology topology) -> PipelineBuilder&;
+
+    // Rasterization
+    auto polygon_mode(VkPolygonMode mode) -> PipelineBuilder&;
+    auto cull_mode(VkCullModeFlags mode) -> PipelineBuilder&;
+    auto front_face(VkFrontFace face) -> PipelineBuilder&;
+    auto line_width(float width) -> PipelineBuilder&;
+    
+    // Depth testing
+    auto depth_test(bool enable) -> PipelineBuilder&;
+    auto depth_write(bool enable) -> PipelineBuilder&;
+    auto depth_compare_op(VkCompareOp op) -> PipelineBuilder&;
+    
+    // Blending
+    auto blend_attachment(const VkPipelineColorBlendAttachmentState& attachment) -> PipelineBuilder&;
+    auto alpha_blending() -> PipelineBuilder&;
+    auto additive_blending() -> PipelineBuilder&;
+    auto no_blending() -> PipelineBuilder&;
+
+    // Add vertex input items one by one
+    auto add(const VkVertexInputBindingDescription& binding) -> PipelineBuilder&;
+    auto add(const VkVertexInputAttributeDescription& attribute) -> PipelineBuilder&;
+
+    // Build the pipeline, returns RAII wrapper
+    auto build(VkPipelineLayout layout) -> std::expected<Pipeline, VkResult>;
+
+private:
+    // Shader modules created from files
+    VkShaderModule m_vertex_shader = VK_NULL_HANDLE;
+    VkShaderModule m_fragment_shader = VK_NULL_HANDLE;
+
     // Render target formats
     VkFormat m_color_format = VK_FORMAT_UNDEFINED;
     VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
@@ -59,6 +86,8 @@ private:
     
     // Input assembly
     VkPrimitiveTopology m_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    std::vector<VkVertexInputBindingDescription> m_vertex_bindings;
+    std::vector<VkVertexInputAttributeDescription> m_vertex_attributes;
     
     // Rasterization
     VkPolygonMode m_polygon_mode = VK_POLYGON_MODE_FILL;
