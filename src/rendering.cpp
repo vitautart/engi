@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #define VMA_IMPLEMENTATION // should be before aby includes
 
 #include <algorithm>
@@ -29,7 +30,7 @@
 namespace RenderingConfig
 {
     constexpr VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT;
-    constexpr size_t frames = 2;
+    constexpr size_t frames = engi::vk::frame_count();
 }
 
 namespace engi
@@ -89,8 +90,12 @@ struct RenderingWindow
     std::vector<VkCommandBuffer> color_cmd_buffers;
     std::vector<VkCommandBuffer> present_cmd_buffers;
     std::vector<VkCommandBuffer> work_cmd_buffers;
+    std::vector<VkBufferMemoryBarrier2> buffer_barriers;
+    std::vector<VkImageMemoryBarrier2> image_barriers;
+    std::vector<VkMemoryBarrier2> memory_barriers;
     uint32_t image_id = 0;
     uint32_t frame_id = 0;
+    std::vector<engi::vk::Buffer> buffers_to_delete[RenderingConfig::frames] = {};
 };
 
 struct RenderingInstace
@@ -139,6 +144,7 @@ auto constexpr static get_device_extensions() noexcept
     return  std::array
     {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
     };
 }
 
@@ -898,10 +904,14 @@ auto engi::vk::init(GLFWwindow* window) noexcept -> bool
     return true;
 }
 
-auto engi::vk::draw_start() -> AcquireResult
+auto engi::vk::acquire() -> AcquireResult
 {
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
     vkWaitForFences(ins.device, 1, &cmd_fence, VK_TRUE, UINT64_MAX);
+
+    // Clean up buffers that were marked for deletion in this frame
+    ins.win.buffers_to_delete[ins.win.frame_id].clear();
+
 
     auto img_semaphore = ins.win.image_semaphores.front();
     ins.win.image_semaphores.pop_front();
@@ -1000,7 +1010,7 @@ auto engi::vk::cmd_end() -> void
     ins.win.work_cmd_buffers.push_back(cmd);
 }
 
-auto engi::vk::draw_end() -> bool
+auto engi::vk::submit() -> bool
 {
     const auto cmd_semaphore = ins.win.command_semaphores[ins.win.frame_id];
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
@@ -1039,6 +1049,89 @@ auto engi::vk::draw_end() -> bool
     ins.win.work_cmd_buffers.clear();
 
     return (result == VK_SUBOPTIMAL_KHR) || (result == VK_SUCCESS);
+}
+
+auto engi::vk::add_barrier(const VkBufferMemoryBarrier2& barrier) -> void
+{
+    ins.win.buffer_barriers.push_back(barrier);
+}
+
+auto engi::vk::add_barrier(const VkImageMemoryBarrier2& barrier) -> void
+{
+    ins.win.image_barriers.push_back(barrier);
+}
+
+auto engi::vk::add_barrier(const VkMemoryBarrier2& barrier) -> void
+{
+    ins.win.memory_barriers.push_back(barrier);
+}
+
+auto engi::vk::add_vertex_buffer_write_barrier(VkBuffer buffer) -> void
+{
+    VkBufferMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+        .pNext = nullptr,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
+        .dstAccessMask = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = buffer,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE
+    };
+
+    ins.win.buffer_barriers.push_back(barrier);
+}
+
+auto engi::vk::add_index_buffer_write_barrier(VkBuffer buffer) -> void
+{
+    VkBufferMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+        .pNext = nullptr,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
+        .dstAccessMask = VK_ACCESS_2_INDEX_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = buffer,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE
+    };
+
+    ins.win.buffer_barriers.push_back(barrier);
+}
+
+auto engi::vk::delete_later(Buffer&& buffer, uint32_t frame_id) -> void
+{
+    assert(frame_id < RenderingConfig::frames);
+    ins.win.buffers_to_delete[frame_id].push_back(std::move(buffer));
+}
+
+auto engi::vk::cmd_sync_barriers() -> void
+{
+    auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
+    
+    VkDependencyInfo dependency_info = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext = nullptr,
+        .dependencyFlags = 0,
+        .memoryBarrierCount = (uint32_t)ins.win.memory_barriers.size(),
+        .pMemoryBarriers = ins.win.memory_barriers.empty() ? nullptr : ins.win.memory_barriers.data(),
+        .bufferMemoryBarrierCount = (uint32_t)ins.win.buffer_barriers.size(),
+        .pBufferMemoryBarriers = ins.win.buffer_barriers.empty() ? nullptr : ins.win.buffer_barriers.data(),
+        .imageMemoryBarrierCount = (uint32_t)ins.win.image_barriers.size(),
+        .pImageMemoryBarriers = ins.win.image_barriers.empty() ? nullptr : ins.win.image_barriers.data()
+    };
+    
+    vkCmdPipelineBarrier2(cmd, &dependency_info);
+    
+    // Clear barrier storage after sync
+    ins.win.buffer_barriers.clear();
+    ins.win.image_barriers.clear();
+    ins.win.memory_barriers.clear();
 }
 
 auto engi::vk::instance() noexcept -> VkInstance

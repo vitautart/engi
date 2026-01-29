@@ -6,6 +6,17 @@
 
 #define TO_APP_WINDOW(window) reinterpret_cast<App*>(glfwGetWindowUserPointer(window))
 
+engi::App::Deinitalizer::~Deinitalizer() noexcept
+{
+    vk::destroy();
+    if (m_glfw_window)
+    {
+        glfwDestroyWindow(m_glfw_window);
+        m_glfw_window = nullptr;
+    }
+    glfwTerminate();
+}
+
 auto engi::App::fnTextInputExterior(GLFWwindow* window, unsigned int codepoint) -> void
 {
     TO_APP_WINDOW(window)->fn_text_input_interior(codepoint);
@@ -81,6 +92,7 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, false);
     app->m_glfw_window = glfwCreateWindow(800, 600, "HomeCAD", NULL, NULL);
+    app->m_deinititalizer.m_glfw_window = app->m_glfw_window;
     if (!app->m_glfw_window)
     {
         std::println("[ERROR] Can't create window");
@@ -101,13 +113,6 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
     }
 
     return app;
-}
-
-engi::App::~App() noexcept
-{
-    engi::vk::destroy();
-    glfwDestroyWindow(m_glfw_window);
-    glfwTerminate();
 }
 
 auto engi::App::run() noexcept -> void

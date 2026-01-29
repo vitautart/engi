@@ -2,7 +2,6 @@
 
 #include <vulkan/vulkan.h>
 #include <expected>
-#include <optional>
 #include <vector>
 #include <string>
 #include <vulkan/vulkan_core.h>

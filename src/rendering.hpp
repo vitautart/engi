@@ -65,15 +65,23 @@ namespace engi::vk
 
     auto init(GLFWwindow* window) noexcept -> bool;
 
-    auto draw_start() -> AcquireResult;
+    auto acquire() -> AcquireResult;
     auto cmd_start() -> VkCommandBuffer;
+    auto add_barrier(const VkBufferMemoryBarrier2& barrier) -> void;
+    auto add_barrier(const VkImageMemoryBarrier2& barrier) -> void;
+    auto add_barrier(const VkMemoryBarrier2& barrier) -> void;
+    auto add_vertex_buffer_write_barrier(VkBuffer buffer) -> void;
+    auto add_index_buffer_write_barrier(VkBuffer buffer) -> void;
+    auto delete_later(Buffer&& buffer, uint32_t frame_id) -> void;
+    auto cmd_sync_barriers() -> void;
     auto view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void;
     auto view_end(VkCommandBuffer cmd) -> void;
     auto cmd_end() -> void;
-    auto draw_end() -> bool;
+    auto submit() -> bool;
 
     auto destroy() noexcept -> void;
 
     auto instance() noexcept -> VkInstance;
     auto device() noexcept -> VkDevice;
+    consteval auto frame_count() noexcept -> uint32_t { return 2; }
 }

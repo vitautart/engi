@@ -35,7 +35,9 @@ static const std::array CPP_FILES =
     "src/app.cpp",
     "src/rendering.cpp",
     "src/pipeline.cpp",
-    "src/layout.cpp"
+    "src/layout.cpp",
+    "src/uniform_buffer.cpp",
+    "src/static_buffer.cpp"
 };
 
 #define GLFW_SRC "external/glfw/src/"

@@ -8,9 +8,12 @@ namespace engi
 {
 class App
 {
+struct Deinitalizer
+{
+    GLFWwindow* m_glfw_window;
+    ~Deinitalizer() noexcept;
+};
 public:
-    ~App() noexcept;
-
     auto run () noexcept -> void;
     static auto create() noexcept -> std::unique_ptr<App>;
 private:
@@ -34,5 +37,8 @@ private:
 
 private:
     GLFWwindow* m_glfw_window;
+    Deinitalizer m_deinititalizer;
+    // Add rest of RAII members below Deinitalizer
+    // To ensure proper destruction order
 };
 }

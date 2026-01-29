@@ -77,7 +77,7 @@ auto LayoutBuilder::build() -> std::expected<Layout, VkResult>
         VkDescriptorSetLayoutCreateInfo info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             .pNext = nullptr,
-            .flags = 0,
+            .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
             .bindingCount = static_cast<uint32_t>(set_bindings.size()),
             .pBindings = set_bindings.data()
         };
