@@ -83,6 +83,19 @@ struct vec
             res.data[i] = data[i] + v.data[i];
         return res;
     }
+
+    /*inline constexpr auto operator+(const T& v) const noexcept -> type
+    {
+        type res;
+        res.data[0] = data[0] + v;
+        res.data[1] = data[1] + v;
+        if constexpr (c > 2) res.data[2] = data[2] + v;
+        if constexpr (c > 3) res.data[3] = data[3] + v;
+        if constexpr (c > 4) for (size_t i = 4; i < c; i++) 
+            res.data[i] = data[i] + v;
+        return res;
+    }*/
+
     inline constexpr auto operator*(const type& v) const noexcept -> type
     {
         type res;
@@ -190,6 +203,23 @@ struct vec
     static inline auto zero() noexcept -> type
     {
         return {0};
+    }
+
+    static inline auto from(T f) noexcept -> type
+    {
+        if constexpr(c == 2)
+            return {f, f};
+        else if constexpr (c == 3)
+            return {f, f, f};
+        else if constexpr (c == 4)
+            return {f, f, f, f};
+        else
+        {
+            type output;
+            for (size_t i = 0; i < c; i++)
+                output[i] = f;
+            return output;
+        }
     }
 };
 
@@ -361,6 +391,39 @@ inline auto length (const T& v1) noexcept -> typename T::field
         return std::sqrt(v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2] + v1[3] * v1[3]);
     else
         return std::sqrt(sum(v1 * v1));
+}
+
+template<RealVector T> 
+inline auto pow (const T& v, const typename T::field& p) noexcept -> T
+{
+    if constexpr (T::rank() == 2)
+        return 
+        { 
+            std::pow(v[0], p), 
+            std::pow(v[1], p) 
+        };
+    else if constexpr (T::rank() == 3)
+        return 
+        { 
+            std::pow(v[0], p), 
+            std::pow(v[1], p),
+            std::pow(v[2], p)
+        };
+    else if constexpr (T::rank() == 4)
+        return 
+        { 
+            std::pow(v[0], p), 
+            std::pow(v[1], p),
+            std::pow(v[2], p),
+            std::pow(v[3], p)
+        };
+    else
+    {
+        T output;
+        for (size_t i = 0; i < T::rank(); i++)
+            output[i] = std::pow(v[i], p);
+        return output;
+    }
 }
 
 template<RealVector T> 
@@ -659,9 +722,40 @@ inline auto persp_proj_rh(S verticalFov, S width, S height, S nearZ, S farZ) noe
     output[0][0] = f * height / width;
     output[1][1] = -f;
     output[2][2] = farZ * near_far;
-
     output[2][3] = static_cast<S>(-1);
     output[3][2] = (farZ * nearZ) * near_far;
+    return output;
+}
+
+// Perspective projection with reverse-Z for NDC(x: [-1,1]; y: [-1,1]; z: [0,1])
+// RHS(x: right; y: down; z: from us) -> RHS(x: right; y: up; z: on us)
+// Reverse-Z: near plane → z=1, far plane → z=0
+// Use VK_COMPARE_OP_GREATER_OR_EQUAL and clear depth to 0.0
+template<RealField S>
+inline auto persp_proj_rh_reverse_z(S verticalFov, S width, S height, S nearZ, S farZ) noexcept -> mat<S, 4, 4>
+{
+    S f = static_cast<S>(1.0) / std::tan(verticalFov * static_cast<S>(0.5));
+    S near_far = 1 / (nearZ - farZ);
+    auto output = mat<S, 4, 4>::zero();
+    output[0][0] = f * height / width;
+    output[1][1] = -f;
+    output[2][2] = nearZ * near_far;
+    output[2][3] = static_cast<S>(-1);
+    output[3][2] = -(farZ * nearZ) * near_far;
+    return output;
+}
+
+// Infinite reverse-Z (recommended for best precision)
+template<RealField S>
+inline auto persp_proj_rh_reverse_z_infinite(S verticalFov, S width, S height, S nearZ) noexcept -> mat<S, 4, 4>
+{
+    S f = static_cast<S>(1.0) / std::tan(verticalFov * static_cast<S>(0.5));
+    auto output = mat<S, 4, 4>::zero();
+    output[0][0] = f * height / width;
+    output[1][1] = -f;
+    output[2][2] = static_cast<S>(0);
+    output[2][3] = static_cast<S>(-1);
+    output[3][2] = nearZ;
     return output;
 }
 
@@ -705,7 +799,90 @@ inline auto look_at_lh(const vec<S, 3>& pos, const vec<S, 3>& target, const vec<
     return output;
 }
 
+template<Vector T>
+inline auto lerp(const T& a, const T& b, typename T::field t) noexcept -> T
+{
+    return a * (static_cast<typename T::field>(1) - t) + b * t;
+}
 
+template<Vector T>
+inline auto lerp(const T& a, const T& b, const T& t) noexcept -> T
+{
+    return a * (T::from(static_cast<typename T::field>(1)) - t) + b * t;
+}
+
+template <Vector T>
+inline auto clamp(const T& v, const T& minVal, const T& maxVal) noexcept -> T
+{
+    return go::min(go::max(v, minVal), maxVal);
+}
+
+// step
+template<Vector T>
+inline auto step(const T& edge, const T& x) noexcept -> T
+{
+    if constexpr (T::rank() == 2)
+        return 
+        { 
+            static_cast<typename T::field>(x[0] >= edge[0]),
+            static_cast<typename T::field>(x[1] >= edge[1]) 
+        };
+    else if constexpr (T::rank() == 3)
+        return 
+        { 
+            static_cast<typename T::field>(x[0] >= edge[0]),
+            static_cast<typename T::field>(x[1] >= edge[1]),
+            static_cast<typename T::field>(x[2] >= edge[2])
+        };
+    else if constexpr (T::rank() == 4)
+        return 
+        { 
+            static_cast<typename T::field>(x[0] >= edge[0]),
+            static_cast<typename T::field>(x[1] >= edge[1]),
+            static_cast<typename T::field>(x[2] >= edge[2]),
+            static_cast<typename T::field>(x[3] >= edge[3])
+        };
+    else
+    {
+        T output;
+        for (size_t i = 0; i < T::rank(); i++)
+            output[i] = static_cast<typename T::field>(x[i] >= edge[i]);
+        return output;
+    }
+}
+
+template<Vector T>
+inline auto step(typename T::field edge, const T& x) noexcept -> T
+{
+    if constexpr (T::rank() == 2)
+        return 
+        { 
+            static_cast<typename T::field>(x[0] >= edge),
+            static_cast<typename T::field>(x[1] >= edge) 
+        };
+    else if constexpr (T::rank() == 3)
+        return 
+        { 
+            static_cast<typename T::field>(x[0] >= edge),
+            static_cast<typename T::field>(x[1] >= edge),
+            static_cast<typename T::field>(x[2] >= edge)
+        };
+    else if constexpr (T::rank() == 4)
+        return 
+        { 
+            static_cast<typename T::field>(x[0] >= edge),
+            static_cast<typename T::field>(x[1] >= edge),
+            static_cast<typename T::field>(x[2] >= edge),
+            static_cast<typename T::field>(x[3] >= edge)
+        };
+    else
+    {
+        T output;
+        for (size_t i = 0; i < T::rank(); i++)
+            output[i] = static_cast<typename T::field>(x[i] >= edge);
+        return output;
+    }
+}
 
 template<Vector T>
 inline auto linmap(const T& src, const T& srcStart, const T& srcEnd, 
@@ -824,4 +1001,34 @@ inline auto enlarge(const aabb<S, c>& bb, const vec<S, c>& v) noexcept -> aabb<S
     };
 }
 
+// Color helpers
+
+template<RealField T> 
+inline auto srgb_to_linear(const vec<T, 3>& v) noexcept -> vec<T, 3>
+{
+    constexpr T a = static_cast<T>(0.055);
+    constexpr T threshold = static_cast<T>(0.04045);
+    constexpr T invGamma = static_cast<T>(2.4);
+    constexpr T linearScale = static_cast<T>(0.07739938080495357); // 1.0f / 12.92f
+    constexpr T gammaScale = static_cast<T>(0.9478672985781991); // 1.0f / 1.055f
+    return lerp(v * linearScale, pow((v + vec<T, 3>::from(a)) * gammaScale, invGamma), step(threshold, v));
+}
+
+template<RealField T>
+inline auto srgba_to_linear(const vec<T, 4>& v) noexcept -> vec<T, 4>
+{
+    return go::grow(go::srgb_to_linear(v.template shrink<3>()), v[3]);
+}
+
+template<RealField T> 
+inline auto srgb_to_linear_simple(const vec<T, 3>& v) noexcept -> vec<T, 3>
+{
+    return pow(v, static_cast<T>(2.2));
+}
+
+template<RealField T>
+inline auto srgba_to_linear_simple(const vec<T, 4>& v) noexcept -> vec<T, 4>
+{
+    return go::grow(go::srgb_to_linear_simple(v.template shrink<3>()), v[3]);
+}
 }

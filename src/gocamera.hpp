@@ -41,7 +41,8 @@ public:
     auto get_proj() const noexcept -> go::mf4 
     {
         if (m_perspective)
-            return go::persp_proj_rh<float>(m_fov_vert, m_size[0], m_size[1], 0.01f, 100.0f);
+            //return go::persp_proj_rh<float>(m_fov_vert, m_size[0], m_size[1], 0.01f, 100.0f);
+            return go::persp_proj_rh_reverse_z_infinite<float>(m_fov_vert, m_size[0], m_size[1], 0.01f);
         else
         {
             auto size = get_target_plane_size();

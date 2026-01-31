@@ -61,17 +61,10 @@ static const std::array GLFW_CPP_FILES =
     GLFW_SRC"egl_context.c",
 };
 
-static const std::array<const char*, 0> SHADERS =
+static const std::array SHADERS =
 {
-    /*"src/shaders/simple3d.vert",
-    "src/shaders/wireframe3d.vert",
-    "src/shaders/simple3d.frag",
-    "src/shaders/diffuse3d.vert",
-    "src/shaders/diffuse3d.frag",
-    "src/shaders/uiblock.vert",
-    "src/shaders/uiblock.frag",
-    "src/shaders/text2d.vert",
-    "src/shaders/text2d.frag",*/
+    "src/shaders/cube.vert",
+    "src/shaders/cube.frag",
 };
 
 auto linux_call(const char* command) -> std::string 

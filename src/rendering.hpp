@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gomath.hpp"
 #include <expected>
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h> // AMD VULKAN ALLOCATION LIB
@@ -74,14 +75,20 @@ namespace engi::vk
     auto add_index_buffer_write_barrier(VkBuffer buffer) -> void;
     auto delete_later(Buffer&& buffer, uint32_t frame_id) -> void;
     auto cmd_sync_barriers() -> void;
-    auto view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void;
+    // TODO: maybe divide view scope on view and rendering, 
+    // view can render certain areas, but rendering is just like launching main beginrender stuff
+    // need to check if we can set clear collor with commands
+    auto view_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void;
     auto view_end(VkCommandBuffer cmd) -> void;
     auto cmd_end() -> void;
     auto submit() -> bool;
+    auto wait() noexcept -> void;
 
     auto destroy() noexcept -> void;
 
     auto instance() noexcept -> VkInstance;
     auto device() noexcept -> VkDevice;
+    auto color_format() noexcept -> VkFormat;
+    auto depth_format() noexcept -> VkFormat;
     consteval auto frame_count() noexcept -> uint32_t { return 2; }
 }

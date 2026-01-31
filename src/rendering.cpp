@@ -1,3 +1,4 @@
+#include "gomath.hpp"
 #include <cstddef>
 #include <cstdint>
 #define VMA_IMPLEMENTATION // should be before aby includes
@@ -82,7 +83,7 @@ struct RenderingWindow
     std::vector<engi::vk::Image> color_images;
     std::vector<engi::vk::Image> resolve_images;
     std::vector<engi::vk::Image> depth_images;
-    std::deque<VkSemaphore> image_semaphores;
+    std::vector<VkSemaphore> image_semaphores;
     std::vector<VkSemaphore> command_semaphores;
     std::vector<VkFence> command_fences;
     VkCommandPool cmd_pool = VK_NULL_HANDLE;
@@ -153,8 +154,8 @@ auto constexpr static get_depth_format() noexcept
     return std::array
     {
         VkFormat::VK_FORMAT_D32_SFLOAT,
-        VkFormat::VK_FORMAT_D32_SFLOAT_S8_UINT,
-        VkFormat::VK_FORMAT_D24_UNORM_S8_UINT
+        VkFormat::VK_FORMAT_D32_SFLOAT_S8_UINT
+        //VkFormat::VK_FORMAT_D24_UNORM_S8_UINT
     };
 }
 
@@ -209,8 +210,8 @@ static auto create_instance() -> bool
     {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         // TO REMOVE SYNCHRONIZATION DEBUG, COMMENT THIS OUT
-        //.pNext = &validationFeatures,
-        .pNext = nullptr,
+        .pNext = &validationFeatures,
+        //.pNext = nullptr,
         .flags = 0,
         .pApplicationInfo = &app_info,
         .enabledLayerCount = (uint32_t)(layers.size()),
@@ -722,7 +723,7 @@ static auto create_sync_data() -> bool
         .flags = VK_FENCE_CREATE_SIGNALED_BIT
     };
 
-    for (const auto& _ : ins.win.resolve_images)
+    for (size_t i = 0; i < RenderingConfig::frames; i++)
     {
         VkSemaphore item;
         auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
@@ -730,7 +731,7 @@ static auto create_sync_data() -> bool
         ins.win.image_semaphores.push_back(item);
     }
 
-    for (size_t i = 0; i < RenderingConfig::frames; i++)
+    for (const auto& _ : ins.win.resolve_images)
     {
         VkSemaphore item;
         auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
@@ -811,61 +812,190 @@ static auto create_transit_cmd_buffers() -> bool
     return true;
 }
 
-static auto record_transit_cmd_buffers() -> void
+static auto resource_initialization() -> void
 {
-    VkCommandBufferBeginInfo cbBeginInfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-    VkImageSubresourceRange common_range = 
+    VkCommandBufferAllocateInfo allocInfo =
     {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = ins.win.cmd_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(ins.device, &allocInfo, &commandBuffer);
+    
+    // Begin recording
+    VkCommandBufferBeginInfo beginInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    
+    // Prepare barrier structures
+    VkImageSubresourceRange color_range = {
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
         .baseMipLevel = 0,
         .levelCount = 1,
         .baseArrayLayer = 0,
         .layerCount = 1,
     };
-
-    VkImageMemoryBarrier image_barrier_1 = 
-    {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    
+    VkImageSubresourceRange depth_range = {
+        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
+    
+    VkImageMemoryBarrier2 color_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .pNext = nullptr,
+        .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .subresourceRange = common_range
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .subresourceRange = color_range,
     };
+    
+    VkImageMemoryBarrier2 depth_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .pNext = nullptr,
+        .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | 
+                        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                         VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .subresourceRange = depth_range,
+    };
+    
+    // Build barrier array for all MSAA images
+    std::vector<VkImageMemoryBarrier2> barriers;
+    barriers.reserve(ins.win.color_images.size() * 2); // color + depth for each
+    
+    for (size_t i = 0; i < ins.win.color_images.size(); i++) {
+        // Add color attachment barrier
+        color_barrier.image = ins.win.color_images[i].image();
+        barriers.push_back(color_barrier);
+        
+        // Add depth attachment barrier
+        depth_barrier.image = ins.win.depth_images[i].image();
+        barriers.push_back(depth_barrier);
+    }
 
-    for (size_t i = 0; (i <  ins.win.color_cmd_buffers.size()) && (i < ins.win.resolve_images.size()); i++)
+    VkDependencyInfo dependencyInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext = nullptr,
+        .dependencyFlags = 0,
+        .memoryBarrierCount = 0,
+        .pMemoryBarriers = nullptr,
+        .bufferMemoryBarrierCount = 0,
+        .pBufferMemoryBarriers = nullptr,
+        .imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size()),
+        .pImageMemoryBarriers = barriers.data(),
+    };
+    
+    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+    vkEndCommandBuffer(commandBuffer);
+    
+    VkSubmitInfo submitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &commandBuffer,
+    };
+    
+    vkQueueSubmit(ins.gfx_queue.queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(ins.gfx_queue.queue);
+    vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, 1, &commandBuffer);
+}
+
+// Record these command buffers - they'll be executed EVERY frame
+static auto record_transit_cmd_buffers() -> void
+{
+    VkCommandBufferBeginInfo cbBeginInfo = { 
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO 
+    };
+    
+    VkImageSubresourceRange common_range = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
+    
+    VkImageMemoryBarrier2 resolve_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        //.srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+        .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, // to avoid sync errors
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .subresourceRange = common_range,
+    };
+    
+    for (size_t i = 0; i < ins.win.color_cmd_buffers.size(); i++) 
     {
-        image_barrier_1.image = ins.win.resolve_images[i].image();
-
+        resolve_barrier.image = ins.win.resolve_images[i].image();
+        
         auto cb = ins.win.color_cmd_buffers[i];
         vkResetCommandBuffer(cb, 0);
         vkBeginCommandBuffer(cb, &cbBeginInfo);
-        vkCmdPipelineBarrier(cb, 
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                0, 0, nullptr, 0, nullptr, 1, &image_barrier_1);
+        
+        VkDependencyInfo dependencyInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &resolve_barrier,
+        };
+        
+        vkCmdPipelineBarrier2(cb, &dependencyInfo);
         vkEndCommandBuffer(cb);
     }
-
-    VkImageMemoryBarrier image_barrier_2 = 
-    {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    
+    // Present transition (unchanged)
+    VkImageMemoryBarrier2 present_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+        .dstAccessMask = VK_ACCESS_2_NONE,
         .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        .subresourceRange = common_range
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .subresourceRange = common_range,
     };
-
-    for (size_t i = 0; (i <  ins.win.present_cmd_buffers.size()) && (i < ins.win.resolve_images.size()); i++)
+    
+    for (size_t i = 0; i < ins.win.present_cmd_buffers.size(); i++) 
     {
-        image_barrier_2.image = ins.win.resolve_images[i].image();
-
+        present_barrier.image = ins.win.resolve_images[i].image();
+        
         auto cb = ins.win.present_cmd_buffers[i];
         vkResetCommandBuffer(cb, 0);
         vkBeginCommandBuffer(cb, &cbBeginInfo);
-        vkCmdPipelineBarrier(cb, 
-                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 
-                0, 0, nullptr, 0, nullptr, 1, &image_barrier_2);
+        
+        VkDependencyInfo dependencyInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &present_barrier,
+        };
+        
+        vkCmdPipelineBarrier2(cb, &dependencyInfo);
         vkEndCommandBuffer(cb);
     }
 }
@@ -900,6 +1030,7 @@ auto engi::vk::init(GLFWwindow* window) noexcept -> bool
     if (!create_cmd_pool()) { destroy(); return false; }
     if (!create_main_cmd_buffers()) { destroy(); return false; }
     if (!create_transit_cmd_buffers()) { destroy(); return false; }
+    resource_initialization();
 
     return true;
 }
@@ -907,17 +1038,14 @@ auto engi::vk::init(GLFWwindow* window) noexcept -> bool
 auto engi::vk::acquire() -> AcquireResult
 {
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
+    const auto img_semaphore = ins.win.image_semaphores[ins.win.frame_id];
     vkWaitForFences(ins.device, 1, &cmd_fence, VK_TRUE, UINT64_MAX);
+    auto result = vkResetFences(ins.device, 1, &cmd_fence);
 
     // Clean up buffers that were marked for deletion in this frame
     ins.win.buffers_to_delete[ins.win.frame_id].clear();
-
-
-    auto img_semaphore = ins.win.image_semaphores.front();
-    ins.win.image_semaphores.pop_front();
-    ins.win.image_semaphores.push_back(img_semaphore);
     
-    auto result = vkAcquireNextImageKHR(ins.device, ins.win.swapchain, 
+    result = vkAcquireNextImageKHR(ins.device, ins.win.swapchain, 
             UINT64_MAX, img_semaphore, nullptr, &ins.win.image_id);
 
     ins.win.work_cmd_buffers.clear();
@@ -941,7 +1069,7 @@ auto engi::vk::cmd_start() -> VkCommandBuffer
     return cmd;
 }
 
-auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void
+auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void
 {
     VkViewport viewport = 
     {
@@ -952,6 +1080,7 @@ auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void
         .minDepth = 0.0f,
         .maxDepth = 1.0f
     };
+    auto lcolor = go::srgba_to_linear(srgba_bg);
     VkRenderingAttachmentInfo colorAttachment = 
     {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -963,7 +1092,7 @@ auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void
         .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue = { .color = {0.1f, 0.2f, 0.2f, 1.0f} }
+        .clearValue = { .color = {lcolor[0], lcolor[1], lcolor[2], lcolor[3]} }
     };
     VkRenderingAttachmentInfo depthAttachment = 
     {
@@ -976,7 +1105,8 @@ auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view) -> void
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = VkAttachmentLoadOp::VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VkAttachmentStoreOp::VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .clearValue = { .depthStencil = {.depth = 1.0f, .stencil = 0} }
+        //.clearValue = { .depthStencil = {.depth = 1.0f, .stencil = 0} } // default-Z
+        .clearValue = { .depthStencil = {.depth = 0.0f, .stencil = 0} } // reverse-Z
     };
 
     VkRenderingInfo renderingInfo = 
@@ -1012,26 +1142,25 @@ auto engi::vk::cmd_end() -> void
 
 auto engi::vk::submit() -> bool
 {
-    const auto cmd_semaphore = ins.win.command_semaphores[ins.win.frame_id];
+    const auto cmd_semaphore = ins.win.command_semaphores[ins.win.image_id];
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
+    const auto img_semaphore = ins.win.image_semaphores[ins.win.frame_id];
 
     ins.win.work_cmd_buffers.push_back(ins.win.present_cmd_buffers[ins.win.image_id]);
-    
-    auto result = vkResetFences(ins.device, 1, &cmd_fence);
 
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     VkSubmitInfo submit_info =
     {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &ins.win.image_semaphores.back(),
+        .pWaitSemaphores = &img_semaphore,
         .pWaitDstStageMask = waitStages,
         .commandBufferCount = (uint32_t)ins.win.work_cmd_buffers.size(),
         .pCommandBuffers = ins.win.work_cmd_buffers.data(),
         .signalSemaphoreCount = 1,
         .pSignalSemaphores = &cmd_semaphore
     };
-    result = vkQueueSubmit(ins.gfx_queue.queue, 1, &submit_info, cmd_fence);
+    auto result = vkQueueSubmit(ins.gfx_queue.queue, 1, &submit_info, cmd_fence);
 
     VkPresentInfoKHR present_info = 
     {
@@ -1071,8 +1200,8 @@ auto engi::vk::add_vertex_buffer_write_barrier(VkBuffer buffer) -> void
     VkBufferMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
         .pNext = nullptr,
-        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
         .dstAccessMask = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1090,8 +1219,8 @@ auto engi::vk::add_index_buffer_write_barrier(VkBuffer buffer) -> void
     VkBufferMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
         .pNext = nullptr,
-        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
         .dstAccessMask = VK_ACCESS_2_INDEX_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1144,8 +1273,28 @@ auto engi::vk::device() noexcept -> VkDevice
     return ins.device;
 }
 
+auto engi::vk::color_format() noexcept -> VkFormat
+{
+    return ins.color_format;
+}
+
+auto engi::vk::depth_format() noexcept -> VkFormat
+{
+    return ins.depth_format;
+}
+
+auto engi::vk::wait() noexcept -> void
+{
+    if (ins.device)
+        vkDeviceWaitIdle(ins.device);
+}
+
 auto engi::vk::destroy() noexcept -> void
 {
+    // Wait for all GPU operations to complete before destroying resources
+    if (ins.device)
+        vkDeviceWaitIdle(ins.device);
+
     if (auto& data = ins.win.color_cmd_buffers; !data.empty())
         vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
     ins.win.color_cmd_buffers.clear();
@@ -1313,8 +1462,7 @@ auto engi::vk::Buffer::create_cpu(const VkBufferCreateInfo& info) noexcept -> st
     VmaAllocationInfo alloc_info;
     VmaAllocationCreateInfo alloc_create_info = 
     {
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT & 
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT,
         .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO
     };
     auto result = vmaCreateBuffer(ins.allocator, &info, &alloc_create_info, &out.m_buffer, &out.m_memory, &alloc_info);
@@ -1322,7 +1470,6 @@ auto engi::vk::Buffer::create_cpu(const VkBufferCreateInfo& info) noexcept -> st
 
     out.m_ptr = alloc_info.pMappedData;
     out.m_size = info.size;
-
     return out;
 }
 
@@ -1368,11 +1515,13 @@ auto engi::vk::Buffer::create_gpu(const VkBufferCreateInfo& info) noexcept -> st
 engi::vk::Buffer::~Buffer() noexcept
 {
     if (m_buffer && m_memory)
-        vmaDestroyBuffer(ins.allocator, m_buffer, m_memory);
+            vmaDestroyBuffer(ins.allocator, m_buffer, m_memory);
 }
 
 auto engi::vk::Buffer::write(const void* src, VkDeviceSize src_size, VkDeviceSize dst_offset) noexcept -> void
 {
     if (m_ptr != nullptr)
         memcpy((char*)m_ptr + dst_offset, src, src_size);
+    else
+        std::println("[WARNING] Trying to write to non-mapped buffer!");
 }
