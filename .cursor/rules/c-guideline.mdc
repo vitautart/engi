@@ -1,0 +1,23 @@
+---
+alwaysApply: true
+---
+
+General style:
+- use c++23 standard.
+- use minimum comments, only if needed to explain some non-obvious things.
+- use "auto func()-> ret" style of functions and methods.
+- prefer "auto"
+- each brace on the new line, unless it is some structure creating in one line.
+- use 4 spaces for indenting
+- use designated initializers as much as possible.
+- some generic utility macroses and stuff in rendercommon.hpp
+
+Rendering features:
+- reverse-z depth
+- usage of push descriptors
+- usage of vkCmdBeginRendering
+- Vulkan Memory Allocation lib for object allocations.
+
+Build system:
+- Custom build system through build.cpp in the root
+- Compiler flags for clangd in compile_flags.txt (may be not full)

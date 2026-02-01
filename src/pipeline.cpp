@@ -1,9 +1,11 @@
 #include "pipeline.hpp"
 
 #include <rendering.hpp>
+#include <rendercommon.hpp>
 
 #include <array>
 #include <fstream>
+#include <print>
 #include <string>
 #include <utility>
 
@@ -35,7 +37,8 @@ auto PipelineBuilder::vertex_shader_from_file(const std::string& path) -> Pipeli
             .codeSize = code.size(),
             .pCode = reinterpret_cast<const uint32_t*>(code.data())
         };
-        vkCreateShaderModule(vk::device(), &info, nullptr, &m_vertex_shader);
+        auto result = vkCreateShaderModule(vk::device(), &info, nullptr, &m_vertex_shader);
+        VK_CHECK_PRINT(result, "[ERROR] Vertex shader module creation failed: {}");
     }
     return *this;
 }
@@ -52,7 +55,8 @@ auto PipelineBuilder::fragment_shader_from_file(const std::string& path) -> Pipe
             .codeSize = code.size(),
             .pCode = reinterpret_cast<const uint32_t*>(code.data())
         };
-        vkCreateShaderModule(vk::device(), &info, nullptr, &m_fragment_shader);
+        auto result = vkCreateShaderModule(vk::device(), &info, nullptr, &m_fragment_shader);
+        VK_CHECK_PRINT(result, "[ERROR] Fragment shader module creation failed: {}");
     }
     return *this;
 }
@@ -229,9 +233,9 @@ auto PipelineBuilder::add(const VkVertexInputAttributeDescription& attribute) ->
 // Build method
 auto PipelineBuilder::build(VkPipelineLayout layout) -> std::expected<Pipeline, VkResult>
 {
-    // Validate required components
     if (m_vertex_shader == VK_NULL_HANDLE)
     {
+        std::println("[ERROR] Pipeline build failed: vertex shader not set");
         return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
     }
     
@@ -436,6 +440,7 @@ auto PipelineBuilder::build(VkPipelineLayout layout) -> std::expected<Pipeline, 
 
     if (result != VK_SUCCESS)
     {
+        std::println("[ERROR] Graphics pipeline creation failed: {}", (int)result);
         return std::unexpected(result);
     }
 

@@ -1,17 +1,34 @@
 #include "GLFW/glfw3.h"
 #include <app.hpp>
+#include <array>
 #include <memory>
 #include <print>
 #include <rendering.hpp>
 #include <pipeline.hpp>
 #include <layout.hpp>
 #include <static_buffer.hpp>
+#include <dynamic_buffer.hpp>
 #include <gomath.hpp>
 #include <gocamera.hpp>
 #include <chrono>
+#include <cmath>
 #include <vulkan/vulkan_core.h>
 
 #define TO_APP_WINDOW(window) reinterpret_cast<App*>(glfwGetWindowUserPointer(window))
+
+namespace
+{
+    auto hue_to_rgb(float h) noexcept -> go::vf3
+    {
+        float r = std::abs(h * 6.0f - 3.0f) - 1.0f;
+        float g = 2.0f - std::abs(h * 6.0f - 2.0f);
+        float b = 2.0f - std::abs(h * 6.0f - 4.0f);
+        r = std::clamp(r, 0.0f, 1.0f);
+        g = std::clamp(g, 0.0f, 1.0f);
+        b = std::clamp(b, 0.0f, 1.0f);
+        return {r, g, b};
+    }
+}
 
 // ===== CUBE TEST RENDERING (TEMPORARY) =====
 namespace TestCube
@@ -76,6 +93,7 @@ namespace TestCube
     engi::vk::Layout g_layout;
     engi::vk::StaticBuffer g_vertex_buffer;
     engi::vk::StaticBuffer g_index_buffer;
+    engi::vk::DynamicBuffer g_vertex_buffer_dynamic;
     uint32_t g_index_count = sizeof(CUBE_INDICES) / sizeof(CUBE_INDICES[0]);
     auto g_start_time = std::chrono::high_resolution_clock::now();
 
@@ -123,7 +141,7 @@ namespace TestCube
             .fragment_shader_from_file("shaders/cube_frag.spv")
             .color_format(engi::vk::color_format())
             .depth_format(engi::vk::depth_format())
-            .samples(VK_SAMPLE_COUNT_2_BIT)
+            .samples(engi::vk::sample_count())
             .add(binding)
             .add(attributes[0])
             .add(attributes[1])
@@ -192,6 +210,17 @@ namespace TestCube
         engi::vk::delete_later(std::move(vb_staging.value()), frame_id);
         engi::vk::delete_later(std::move(ib_staging.value()), frame_id);
 
+        auto dyn_vb_result = engi::vk::DynamicBuffer::create(
+            sizeof(CUBE_VERTICES),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+        );
+        if (!dyn_vb_result)
+        {
+            std::println("[ERROR] Failed to create cube2 dynamic vertex buffer");
+            return;
+        }
+        g_vertex_buffer_dynamic = std::move(dyn_vb_result.value());
+
         g_initialized = true;
         std::println("[INFO] Cube rendering initialized");
     }
@@ -200,67 +229,81 @@ namespace TestCube
     {
         auto now = std::chrono::high_resolution_clock::now();
         float elapsed = std::chrono::duration<float>(now - g_start_time).count();
-        
-        // Create rotation matrices
-        float angle = elapsed * 0.5f; // Slow rotation speed
-        go::mf4 rotation_x = go::rot4({1, 0, 0}, angle * 0.7f);
-        go::mf4 rotation_y = go::rot4({0, 1, 0}, angle);
-        go::mf4 rotation_z = go::rot4({0, 0, 1}, angle * 0.3f);
-        
-        go::mf4 rotation = rotation_y * rotation_x * rotation_z;
-        
-        // Translation and projection
-        go::mf4 translation = go::translate(go::vf3{0, 0, -5});
-        go::mf4 view = translation * rotation;
-        
-        go::mf4 proj = go::persp_proj_rh<float>(
-            1.5708f,  // 90 degrees FOV
-            800.0f,
-            600.0f,
-            0.01f,
-            100.0f
-        );
+
         go::Camera3D camera(
-            {-5, 0, 0},
             {0, 0, 0},
+            {1, 0, 0},
             {0, 1, 0},
             {800.0f, 600.0f},
             true
         );
-        
-        //go::mf4 mvp = camera.get_proj() * camera.get_view();
-        go::mf4 mvp = proj * view;
-        
-        PushConstant pc{mvp};
-        
-        // Bind pipeline and buffers
+        go::mf4 proj = camera.get_proj();
+        go::mf4 view = camera.get_view();
+
+        float angle = elapsed * 0.5f;
+        go::mf4 rotation_x = go::rot4({1, 0, 0}, angle * 0.7f);
+        go::mf4 rotation_y = go::rot4({0, 1, 0}, angle);
+        go::mf4 rotation_z = go::rot4({0, 0, 1}, angle * 0.3f);
+        go::mf4 rotation = rotation_y * rotation_x * rotation_z;
+        go::mf4 model_left = go::translate(go::vf3{5, 0, -2}) * rotation;
+        go::mf4 model_right = go::translate(go::vf3{5, 0, 2}) * rotation;
+        go::mf4 mvp_left = proj * view * model_left;
+        go::mf4 mvp_right = proj * view * model_right;
+
+        std::array<Vertex, std::size(CUBE_VERTICES)> dyn_vertices;
+        constexpr float hue_speed = 0.35f;
+        for (size_t i = 0; i < std::size(CUBE_VERTICES); ++i)
+        {
+            uint32_t face = static_cast<uint32_t>(i / 4);
+            float hue = std::fmod(elapsed * hue_speed + face / 6.0f, 1.0f);
+            if (hue < 0.0f)
+                hue += 1.0f;
+            go::vf3 base = hue_to_rgb(hue);
+            float pulse = 0.6f + 0.4f * (0.5f + 0.5f * std::sin(elapsed * 2.0f + face));
+            dyn_vertices[i] = {
+                CUBE_VERTICES[i].pos,
+                base * pulse
+            };
+        }
+        auto wr = g_vertex_buffer_dynamic.write_to_gpu(cmd, dyn_vertices.data(), sizeof(dyn_vertices));
+        if (!wr)
+        {
+            std::println("[ERROR] Failed to upload cube2 vertex data");
+            return;
+        }
+        engi::vk::add_vertex_buffer_write_barrier(g_vertex_buffer_dynamic.buffer());
+        engi::vk::cmd_sync_barriers();
+
+        VkRect2D full_rect = { .offset = {0, 0}, .extent = {800, 600} };
+        engi::vk::view_start(cmd, full_rect, {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f});
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipeline.get());
-        
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmd, 0, 1, &g_vertex_buffer.buffer(), &offset);
         vkCmdBindIndexBuffer(cmd, g_index_buffer.buffer(), 0, VK_INDEX_TYPE_UINT16);
-        
-        // Push constants
-        vkCmdPushConstants(
-            cmd,
-            g_layout.get(),
-            VK_SHADER_STAGE_VERTEX_BIT,
-            0,
-            sizeof(PushConstant),
-            &pc
-        );
-        
-        // Draw
+
+        VkDeviceSize offset = 0;
+        PushConstant pc_left{mvp_left};
+        vkCmdPushConstants(cmd, g_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pc_left);
+        VkBuffer vb_static = g_vertex_buffer.buffer();
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vb_static, &offset);
         vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
+
+        PushConstant pc_right{mvp_right};
+        vkCmdPushConstants(cmd, g_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pc_right);
+        VkBuffer vb_dynamic = g_vertex_buffer_dynamic.buffer();
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vb_dynamic, &offset);
+        vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
+
+        engi::vk::view_end(cmd);
     }
 
     auto cleanup() -> void
     {
         if (!g_initialized)
             return;
-        
+
         g_vertex_buffer = {};
         g_index_buffer = {};
+        g_vertex_buffer_dynamic = {};
         g_pipeline = {};
         g_layout = {};
         g_initialized = false;
@@ -396,18 +439,8 @@ auto engi::App::run() noexcept -> void
         // Initialize cube rendering (first frame only)
         TestCube::init(cmd, acquire_result.id);
 
-        // Setup rendering area (full screen)
-        VkRect2D view_rect{
-            .offset = {0, 0},
-            .extent = {800, 600}
-        };
-        engi::vk::view_start(cmd, view_rect, {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f});
-
-        // Render the cube
         TestCube::render(cmd);
 
-        // End rendering
-        engi::vk::view_end(cmd);
         engi::vk::cmd_end();
 
         // Submit and present

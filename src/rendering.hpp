@@ -67,6 +67,7 @@ namespace engi::vk
     auto init(GLFWwindow* window) noexcept -> bool;
 
     auto acquire() -> AcquireResult;
+    auto current_frame_id() -> uint32_t;
     auto cmd_start() -> VkCommandBuffer;
     auto add_barrier(const VkBufferMemoryBarrier2& barrier) -> void;
     auto add_barrier(const VkImageMemoryBarrier2& barrier) -> void;
@@ -90,5 +91,6 @@ namespace engi::vk
     auto device() noexcept -> VkDevice;
     auto color_format() noexcept -> VkFormat;
     auto depth_format() noexcept -> VkFormat;
+    auto sample_count() noexcept -> VkSampleCountFlagBits;
     consteval auto frame_count() noexcept -> uint32_t { return 2; }
 }

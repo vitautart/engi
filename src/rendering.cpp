@@ -30,7 +30,7 @@
 
 namespace RenderingConfig
 {
-    constexpr VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT;
+    constexpr VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_4_BIT;
     constexpr size_t frames = engi::vk::frame_count();
 }
 
@@ -1059,6 +1059,11 @@ auto engi::vk::acquire() -> AcquireResult
     };
 }
 
+auto engi::vk::current_frame_id() -> uint32_t
+{
+    return ins.win.frame_id;
+}
+
 auto engi::vk::cmd_start() -> VkCommandBuffer
 {
     auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
@@ -1281,6 +1286,11 @@ auto engi::vk::color_format() noexcept -> VkFormat
 auto engi::vk::depth_format() noexcept -> VkFormat
 {
     return ins.depth_format;
+}
+
+auto engi::vk::sample_count() noexcept -> VkSampleCountFlagBits
+{
+    return RenderingConfig::samples;
 }
 
 auto engi::vk::wait() noexcept -> void

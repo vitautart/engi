@@ -1,4 +1,5 @@
 #include <cassert>
+#include <print>
 
 #include <uniform_buffer.hpp>
 
@@ -26,7 +27,10 @@ namespace engi::vk
         {
             auto b = Buffer::create_cpu(bufferInfo);
             if (!b)
+            {
+                std::println("[ERROR] Uniform buffer creation failed: {}", (int)b.error());
                 return std::unexpected(b.error());
+            }
 
             out.m_buffers[i] = std::move(b.value());
             out.m_buf_infos[i] = VkDescriptorBufferInfo{ .buffer = out.m_buffers[i].buffer(), .offset = 0, .range = out.m_size };

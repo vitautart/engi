@@ -1,4 +1,5 @@
 #include <cassert>
+#include <print>
 
 #include <static_buffer.hpp>
 
@@ -20,7 +21,10 @@ namespace engi::vk
 
         auto b = Buffer::create_gpu(bufferInfo);
         if (!b)
+        {
+            std::println("[ERROR] Static buffer creation failed: {}", (int)b.error());
             return std::unexpected(b.error());
+        }
 
         out.m_buffer = std::move(b.value());
         return out;
@@ -45,7 +49,10 @@ namespace engi::vk
 
         auto stagingBuffer = Buffer::create_cpu(stagingBufferInfo);
         if (!stagingBuffer)
+        {
+            std::println("[ERROR] Staging buffer creation failed: {}", (int)stagingBuffer.error());
             return std::unexpected(stagingBuffer.error());
+        }
 
         // Write data into staging buffer
         stagingBuffer.value().write(src, src_size, 0);
