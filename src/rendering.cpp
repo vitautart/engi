@@ -812,26 +812,9 @@ static auto create_transit_cmd_buffers() -> bool
     return true;
 }
 
-static auto resource_initialization() -> void
+static auto system_resource_initialization() -> void
 {
-    VkCommandBufferAllocateInfo allocInfo =
-    {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = ins.win.cmd_pool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-    
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(ins.device, &allocInfo, &commandBuffer);
-    
-    // Begin recording
-    VkCommandBufferBeginInfo beginInfo = 
-    {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    auto cmd = engi::vk::one_time_submit_start();
     
     // Prepare barrier structures
     VkImageSubresourceRange color_range = {
@@ -906,18 +889,9 @@ static auto resource_initialization() -> void
         .pImageMemoryBarriers = barriers.data(),
     };
     
-    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
-    vkEndCommandBuffer(commandBuffer);
-    
-    VkSubmitInfo submitInfo = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &commandBuffer,
-    };
-    
-    vkQueueSubmit(ins.gfx_queue.queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(ins.gfx_queue.queue);
-    vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, 1, &commandBuffer);
+    vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+
+    engi::vk::one_time_submit_end(cmd);
 }
 
 // Record these command buffers - they'll be executed EVERY frame
@@ -1030,9 +1004,48 @@ auto engi::vk::init(GLFWwindow* window) noexcept -> bool
     if (!create_cmd_pool()) { destroy(); return false; }
     if (!create_main_cmd_buffers()) { destroy(); return false; }
     if (!create_transit_cmd_buffers()) { destroy(); return false; }
-    resource_initialization();
+    system_resource_initialization();
 
     return true;
+}
+
+auto engi::vk::one_time_submit_start() -> VkCommandBuffer
+{
+    VkCommandBufferAllocateInfo allocInfo =
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = ins.win.cmd_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(ins.device, &allocInfo, &commandBuffer);
+    
+    // Begin recording
+    VkCommandBufferBeginInfo beginInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    
+    return commandBuffer;
+}
+
+auto engi::vk::one_time_submit_end(VkCommandBuffer cmd) -> void
+{
+    vkEndCommandBuffer(cmd);
+    
+    VkSubmitInfo submitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd,
+    };
+    
+    vkQueueSubmit(ins.gfx_queue.queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(ins.gfx_queue.queue);
+    vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, 1, &cmd);
 }
 
 auto engi::vk::wait_frame() -> uint32_t

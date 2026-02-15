@@ -65,17 +65,16 @@ namespace engi::vk
 
     auto init(GLFWwindow* window) noexcept -> bool;
 
-    auto add_barrier(const VkBufferMemoryBarrier2& barrier) -> void;
-    auto add_barrier(const VkImageMemoryBarrier2& barrier) -> void;
-    auto add_barrier(const VkMemoryBarrier2& barrier) -> void;
-    auto add_vertex_buffer_write_barrier(VkBuffer buffer) -> void;
-    auto add_index_buffer_write_barrier(VkBuffer buffer) -> void;
-    auto cmd_sync_barriers(VkCommandBuffer cmd) -> void;
-    auto delete_later(Buffer&& buffer, uint32_t frame_id) -> void;
+    // ONE-TIME API for resource initialization before rendering starts.
+    // This API will wait for main queue, 
+    // so better to call it once before actuall rendering starts.
+    auto one_time_submit_start() -> VkCommandBuffer;
+    auto one_time_submit_end(VkCommandBuffer cmd) -> void;
+    // END ONE-TIME API
 
+    // MAIN RENDERING API
     auto wait_frame() -> uint32_t;
     auto acquire() -> AcquireResult;
-    auto current_frame_id() -> uint32_t;
     auto cmd_start() -> VkCommandBuffer;
     auto draw_start(VkCommandBuffer cmd, go::vf4 srgba_bg) -> void;
     auto draw_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void;
@@ -84,11 +83,22 @@ namespace engi::vk
     auto cmd_end() -> void;
     auto submit() -> bool;
     auto wait() noexcept -> void;
+    // END MAIN RENDERING API
+
+    auto add_barrier(const VkBufferMemoryBarrier2& barrier) -> void;
+    auto add_barrier(const VkImageMemoryBarrier2& barrier) -> void;
+    auto add_barrier(const VkMemoryBarrier2& barrier) -> void;
+    auto add_vertex_buffer_write_barrier(VkBuffer buffer) -> void;
+    auto add_index_buffer_write_barrier(VkBuffer buffer) -> void;
+    auto cmd_sync_barriers(VkCommandBuffer cmd) -> void;
+    auto delete_later(Buffer&& buffer, uint32_t frame_id) -> void;
 
     auto destroy() noexcept -> void;
 
+    // Helper functions to access instance data
     auto instance() noexcept -> VkInstance;
     auto device() noexcept -> VkDevice;
+    auto current_frame_id() -> uint32_t;
     auto color_format() noexcept -> VkFormat;
     auto depth_format() noexcept -> VkFormat;
     auto sample_count() noexcept -> VkSampleCountFlagBits;
