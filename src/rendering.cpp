@@ -1035,25 +1035,34 @@ auto engi::vk::init(GLFWwindow* window) noexcept -> bool
     return true;
 }
 
-auto engi::vk::acquire() -> AcquireResult
+auto engi::vk::wait_frame() -> uint32_t
 {
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
-    const auto img_semaphore = ins.win.image_semaphores[ins.win.frame_id];
     vkWaitForFences(ins.device, 1, &cmd_fence, VK_TRUE, UINT64_MAX);
     auto result = vkResetFences(ins.device, 1, &cmd_fence);
 
     // Clean up buffers that were marked for deletion in this frame
     ins.win.buffers_to_delete[ins.win.frame_id].clear();
-    
-    result = vkAcquireNextImageKHR(ins.device, ins.win.swapchain, 
-            UINT64_MAX, img_semaphore, nullptr, &ins.win.image_id);
 
+    // Clear and push dummy cmd for later submit
+    // This dummy cmd will be used later after aquire (with aquired image id), 
+    // to push actuall color_cmd_buffer for image transition.
     ins.win.work_cmd_buffers.clear();
-    ins.win.work_cmd_buffers.push_back(ins.win.color_cmd_buffers[ins.win.image_id]);
+    ins.win.work_cmd_buffers.push_back(VK_NULL_HANDLE);
+    //ins.win.work_cmd_buffers.push_back(ins.win.color_cmd_buffers[ins.win.image_id]);
+
+    return ins.win.frame_id;
+}
+
+auto engi::vk::acquire() -> AcquireResult
+{
+    const auto img_semaphore = ins.win.image_semaphores[ins.win.frame_id];
+    
+    auto result = vkAcquireNextImageKHR(ins.device, ins.win.swapchain, 
+            UINT64_MAX, img_semaphore, nullptr, &ins.win.image_id);
 
     return 
     {
-        .id = ins.win.frame_id,
         .image = ins.win.image_id,
         .result = result,
     };
@@ -1066,6 +1075,10 @@ auto engi::vk::current_frame_id() -> uint32_t
 
 auto engi::vk::cmd_start() -> VkCommandBuffer
 {
+    if (ins.win.work_cmd_buffers.empty())
+    {
+        std::println("[WARNING] Command buffer recording was started without wait_frame being called first");
+    }
     auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
     VkCommandBufferBeginInfo info = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     vkResetCommandBuffer(cmd, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
@@ -1074,8 +1087,13 @@ auto engi::vk::cmd_start() -> VkCommandBuffer
     return cmd;
 }
 
-auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void
-{
+auto engi::vk::draw_start(VkCommandBuffer cmd, go::vf4 srgba_bg) -> void
+{   
+    draw_start(cmd, { {0, 0}, ins.win.extent }, srgba_bg);
+}
+
+auto engi::vk::draw_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void
+{   
     VkViewport viewport = 
     {
         .x = (float)view.offset.x,
@@ -1132,8 +1150,23 @@ auto engi::vk::view_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srg
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &view);
 }
+    
+auto engi::vk::view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void
+{
+    VkViewport viewport = 
+    {
+        .x = (float)view.offset.x,
+        .y = (float)view.offset.y,
+        .width = (float)view.extent.width,
+        .height = (float)view.extent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+    };
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &view);
+}
 
-auto engi::vk::view_end(VkCommandBuffer cmd) -> void
+auto engi::vk::draw_end(VkCommandBuffer cmd) -> void
 {
     vkCmdEndRendering(cmd);
 }
@@ -1147,10 +1180,16 @@ auto engi::vk::cmd_end() -> void
 
 auto engi::vk::submit() -> bool
 {
+    if (ins.win.work_cmd_buffers.empty())
+    {
+        std::println("[WARNING] Submit was called without wait_frame being called first");
+        return false; // nothing to submit, skip sync and present
+    }
     const auto cmd_semaphore = ins.win.command_semaphores[ins.win.image_id];
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
     const auto img_semaphore = ins.win.image_semaphores[ins.win.frame_id];
 
+    ins.win.work_cmd_buffers[0] = ins.win.color_cmd_buffers[ins.win.image_id];
     ins.win.work_cmd_buffers.push_back(ins.win.present_cmd_buffers[ins.win.image_id]);
 
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -1244,10 +1283,8 @@ auto engi::vk::delete_later(Buffer&& buffer, uint32_t frame_id) -> void
     ins.win.buffers_to_delete[frame_id].push_back(std::move(buffer));
 }
 
-auto engi::vk::cmd_sync_barriers() -> void
+auto engi::vk::cmd_sync_barriers(VkCommandBuffer cmd) -> void
 {
-    auto cmd = ins.win.main_cmd_buffers[ins.win.frame_id];
-    
     VkDependencyInfo dependency_info = {
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
         .pNext = nullptr,

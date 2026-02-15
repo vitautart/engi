@@ -204,7 +204,7 @@ namespace TestCube
 
         engi::vk::add_vertex_buffer_write_barrier(g_vertex_buffer.buffer());
         engi::vk::add_index_buffer_write_barrier(g_index_buffer.buffer());
-        engi::vk::cmd_sync_barriers();
+        engi::vk::cmd_sync_barriers(cmd);
 
         // Keep staging buffers alive until frame is done
         engi::vk::delete_later(std::move(vb_staging.value()), frame_id);
@@ -272,10 +272,10 @@ namespace TestCube
             return;
         }
         engi::vk::add_vertex_buffer_write_barrier(g_vertex_buffer_dynamic.buffer());
-        engi::vk::cmd_sync_barriers();
+        engi::vk::cmd_sync_barriers(cmd);
 
         VkRect2D full_rect = { .offset = {0, 0}, .extent = {800, 600} };
-        engi::vk::view_start(cmd, full_rect, {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f});
+        engi::vk::draw_start(cmd, full_rect, {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f});
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipeline.get());
         vkCmdBindIndexBuffer(cmd, g_index_buffer.buffer(), 0, VK_INDEX_TYPE_UINT16);
@@ -293,7 +293,7 @@ namespace TestCube
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb_dynamic, &offset);
         vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
 
-        engi::vk::view_end(cmd);
+        engi::vk::draw_end(cmd);
     }
 
     auto cleanup() -> void
@@ -426,6 +426,7 @@ auto engi::App::run() noexcept -> void
     while(!glfwWindowShouldClose(m_glfw_window))
     {
         // Acquire next swapchain image
+        auto frame = engi::vk::wait_frame();
         auto acquire_result = engi::vk::acquire();
         if (acquire_result.result != VK_SUCCESS)
         {
@@ -437,7 +438,7 @@ auto engi::App::run() noexcept -> void
         auto cmd = engi::vk::cmd_start();
 
         // Initialize cube rendering (first frame only)
-        TestCube::init(cmd, acquire_result.id);
+        TestCube::init(cmd, frame);
 
         TestCube::render(cmd);
 

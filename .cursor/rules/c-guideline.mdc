@@ -21,3 +21,5 @@ Rendering features:
 Build system:
 - Custom build system through build.cpp in the root
 - Compiler flags for clangd in compile_flags.txt (may be not full)
+- Do not try to run it for you testing, I will manually do this
+- thirdparty libs is located in external. Some of them is glfw, stb, vma

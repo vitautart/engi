@@ -59,28 +59,28 @@ namespace engi::vk
 
     struct AcquireResult
     {
-        uint32_t id;
         uint32_t image;
         VkResult result;
     };
 
     auto init(GLFWwindow* window) noexcept -> bool;
 
-    auto acquire() -> AcquireResult;
-    auto current_frame_id() -> uint32_t;
-    auto cmd_start() -> VkCommandBuffer;
     auto add_barrier(const VkBufferMemoryBarrier2& barrier) -> void;
     auto add_barrier(const VkImageMemoryBarrier2& barrier) -> void;
     auto add_barrier(const VkMemoryBarrier2& barrier) -> void;
     auto add_vertex_buffer_write_barrier(VkBuffer buffer) -> void;
     auto add_index_buffer_write_barrier(VkBuffer buffer) -> void;
+    auto cmd_sync_barriers(VkCommandBuffer cmd) -> void;
     auto delete_later(Buffer&& buffer, uint32_t frame_id) -> void;
-    auto cmd_sync_barriers() -> void;
-    // TODO: maybe divide view scope on view and rendering, 
-    // view can render certain areas, but rendering is just like launching main beginrender stuff
-    // need to check if we can set clear collor with commands
-    auto view_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void;
-    auto view_end(VkCommandBuffer cmd) -> void;
+
+    auto wait_frame() -> uint32_t;
+    auto acquire() -> AcquireResult;
+    auto current_frame_id() -> uint32_t;
+    auto cmd_start() -> VkCommandBuffer;
+    auto draw_start(VkCommandBuffer cmd, go::vf4 srgba_bg) -> void;
+    auto draw_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void;
+    auto view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void; // optional, will be set by draw_start
+    auto draw_end(VkCommandBuffer cmd) -> void;
     auto cmd_end() -> void;
     auto submit() -> bool;
     auto wait() noexcept -> void;
