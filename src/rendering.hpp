@@ -63,7 +63,9 @@ namespace engi::vk
         VkResult result;
     };
 
+    // Lifetime management of renderer
     auto init(GLFWwindow* window) noexcept -> bool;
+    auto destroy() noexcept -> void;
 
     // ONE-TIME API for resource initialization before rendering starts.
     // This API will wait for main queue, 
@@ -92,8 +94,6 @@ namespace engi::vk
     auto add_index_buffer_write_barrier(VkBuffer buffer) -> void;
     auto cmd_sync_barriers(VkCommandBuffer cmd) -> void;
     auto delete_later(Buffer&& buffer, uint32_t frame_id) -> void;
-
-    auto destroy() noexcept -> void;
 
     // Helper functions to access instance data
     auto instance() noexcept -> VkInstance;

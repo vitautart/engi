@@ -34,11 +34,13 @@ static const std::array CPP_FILES =
     "src/main.cpp",
     "src/app.cpp",
     "src/rendering.cpp",
+    "src/rendering_overlay.cpp",
     "src/pipeline.cpp",
     "src/layout.cpp",
     "src/uniform_buffer.cpp",
     "src/static_buffer.cpp",
-    "src/dynamic_buffer.cpp"
+    "src/dynamic_buffer.cpp",
+    "src/font_atlas.cpp"
 };
 
 #define GLFW_SRC "external/glfw/src/"
@@ -66,6 +68,8 @@ static const std::array SHADERS =
 {
     "src/shaders/cube.vert",
     "src/shaders/cube.frag",
+    "src/shaders/text.vert",
+    "src/shaders/text.frag",
 };
 
 auto linux_call(const char* command) -> std::string 
