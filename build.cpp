@@ -72,6 +72,9 @@ static const std::array SHADERS =
     "src/shaders/text.frag",
 };
 
+static const fs::path IOSEVKA_TTF = fs::path("external/iosevka/iosevka-fixed-regular.ttf");
+static const fs::path BUILD_RESOURCE_FONTS = BUILD_FOLDER / fs::path("resources") / fs::path("fonts");
+
 auto linux_call(const char* command) -> std::string 
 {
     constexpr size_t MAX_STR_ALLOC = 1024;
@@ -270,6 +273,39 @@ auto compile_shader(const fs::path& shader_txt) -> void
     }
 }
 
+auto copy_resource_if_changed(const fs::path& src, const fs::path& dest_dir) -> bool
+{
+    if (!fs::exists(src))
+    {
+        std::cout << "[BUILD][WARNING] Resource not found: " << src << std::endl;
+        return false;
+    }
+
+    if (!fs::exists(dest_dir))
+        fs::create_directories(dest_dir);
+
+    fs::path dest = dest_dir / src.filename();
+
+    bool should_copy = true;
+    if (fs::exists(dest))
+        should_copy = get_write_time(src) > get_write_time(dest);
+
+    if (should_copy)
+    {
+        std::cout << "[COPY] " << src << " -> " << dest << std::endl;
+        try
+        {
+            fs::copy_file(src, dest, fs::copy_options::overwrite_existing);
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << "[BUILD][ERROR] Failed to copy resource: " << e.what() << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 auto run_app()
 {
     std::string run_command  = std::string("cd ") + BUILD_FOLDER.string() 
@@ -303,6 +339,9 @@ int main(int argc, char *argv[])
 
     for (auto shader : SHADERS)
         compile_shader(shader);
+
+    // Copy font resource into build/resources/fonts if source changed
+    copy_resource_if_changed(IOSEVKA_TTF, BUILD_RESOURCE_FONTS);
 
     bool link_success = link_files_dynamic(o_files, APP_PATH, ADDITIONAL_LINK_FLAGS);
     

@@ -1,0 +1,1 @@
+* Dynamic buffer first initialization writes only to 0 internal buffer, buffer 1 is not written, so we have blinking when rendering, because each buffer corresponds to certain frame. FIXED.

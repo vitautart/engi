@@ -52,7 +52,9 @@ namespace engi::vk
         assert(src_size > 0);
         assert(cmd != VK_NULL_HANDLE);
 
-        const auto fi = current_frame_id();
+        m_current_buffer_id = (m_current_buffer_id + 1) % FRAMES;
+
+        const auto fi = m_current_buffer_id;
         assert(fi < FRAMES);
 
         if (src_size > m_allocated_sizes[fi])
@@ -100,11 +102,11 @@ namespace engi::vk
 
     auto DynamicBuffer::buffer() const noexcept -> VkBuffer
     {
-        return m_gpu_buffers[current_frame_id()].buffer();
+        return m_gpu_buffers[m_current_buffer_id].buffer();
     }
 
     auto DynamicBuffer::size() const noexcept -> VkDeviceSize
     {
-        return m_written_sizes[current_frame_id()];
+        return m_written_sizes[m_current_buffer_id];
     }
 }

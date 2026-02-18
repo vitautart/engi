@@ -38,7 +38,7 @@ public:
     ~LayoutBuilder() = default;
 
     // Start a new descriptor set layout (subsequent add() calls append to the current set)
-    auto set() -> LayoutBuilder&;
+    auto set(bool is_push_descriptor) -> LayoutBuilder&;
 
     // Add a binding to the current descriptor set: binding, type, stageFlags, descriptorCount
     auto add(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t descriptorCount = 1) -> LayoutBuilder&;
@@ -51,6 +51,7 @@ public:
 
 private:
     std::vector<std::vector<VkDescriptorSetLayoutBinding>> m_sets;
+    std::vector<VkDescriptorSetLayoutCreateFlags> m_descriptor_set_layout_flags;
     std::vector<VkPushConstantRange> m_push_constants;
 };
 

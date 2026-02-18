@@ -150,7 +150,7 @@ namespace engi::vk
 
         // Layout: set 0 - combined image sampler, plus push constants for viewport params
         auto layout_res = LayoutBuilder()
-            .set()
+            .set(false)
             .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)
             .push_const(0, sizeof(PushConstants), VK_SHADER_STAGE_VERTEX_BIT)
             .build();
@@ -238,7 +238,7 @@ namespace engi::vk
             .flags = 0,
             .magFilter = VK_FILTER_LINEAR,
             .minFilter = VK_FILTER_LINEAR,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,

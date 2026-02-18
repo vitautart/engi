@@ -32,5 +32,6 @@ namespace engi::vk
         std::array<VkDeviceSize, FRAMES> m_allocated_sizes = {};
         std::array<VkDeviceSize, FRAMES> m_written_sizes = {};
         VkBufferUsageFlags m_usage = 0;
+        size_t m_current_buffer_id = FRAMES - 1;
     };
 }

@@ -23,7 +23,7 @@ void main()
 {
     vec2 p = c.screen_pos + pos; 
     gl_Position = vec4(p * c.view_2_over_size - 1.0, 0.0, 1.0);
-    out_color = color_strength * unpackUnorm4x8(color) + (1.0 - color_strength) * unpackUnorm4x8(col);
+    out_color = c.color_strength * unpackUnorm4x8(c.color) + (1.0 - c.color_strength) * unpackUnorm4x8(col);
     out_uv = uv;
     out_img = img;
 }

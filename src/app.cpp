@@ -4,6 +4,7 @@
 #include <memory>
 #include <print>
 #include <rendering.hpp>
+#include "rendering_overlay.hpp"
 #include <pipeline.hpp>
 #include <layout.hpp>
 #include <static_buffer.hpp>
@@ -96,6 +97,11 @@ namespace TestCube
     engi::vk::DynamicBuffer g_vertex_buffer_dynamic;
     uint32_t g_index_count = sizeof(CUBE_INDICES) / sizeof(CUBE_INDICES[0]);
     auto g_start_time = std::chrono::high_resolution_clock::now();
+
+    // Text rendering test
+    engi::vk::FontMonoAtlas g_font_atlas;
+    engi::vk::RenderingOverlay g_overlay;
+    engi::vk::TextBuffer g_text_buffer;
 
     auto init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     {
@@ -223,6 +229,48 @@ namespace TestCube
 
         g_initialized = true;
         std::println("[INFO] Cube rendering initialized");
+
+        // Initialize font atlas, overlay and a static text buffer
+        {
+            auto font_res = engi::vk::FontMonoAtlas::create(
+                cmd,
+                std::filesystem::path("resources/fonts/iosevka-fixed-regular.ttf"),
+                16,
+                512u,
+                512u
+            );
+            if (!font_res)
+            {
+                std::println("[WARNING] Failed to create font atlas");
+            }
+            else
+            {
+                g_font_atlas = std::move(font_res.value());
+
+                if (!g_overlay.init(g_font_atlas))
+                    std::println("[WARNING] Failed to init rendering overlay");
+                else
+                {
+                    auto tb_res = engi::vk::TextBuffer::create(&g_font_atlas);
+                    if (!tb_res)
+                        std::println("[WARNING] Failed to create text buffer");
+                    else
+                    {
+                        g_text_buffer = std::move(tb_res.value());
+                        g_text_buffer.clear();
+                        g_text_buffer.add(L"Hello engi", go::vf2{10.0f, 10.0f}, go::vu4{255,255,255,255});
+                        auto up = g_text_buffer.upload(cmd);
+                        if (!up)
+                            std::println("[WARNING] Failed to upload text buffer");
+                        else
+                        {
+                            engi::vk::add_vertex_buffer_write_barrier(g_text_buffer.vertex_buffer());
+                            engi::vk::cmd_sync_barriers(cmd);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     auto render(VkCommandBuffer cmd) -> void
@@ -293,6 +341,9 @@ namespace TestCube
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb_dynamic, &offset);
         vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
 
+        g_overlay.start_text_draw(cmd);
+        g_overlay.draw(cmd, g_text_buffer, full_rect);
+
         engi::vk::draw_end(cmd);
     }
 
@@ -300,6 +351,9 @@ namespace TestCube
     {
         if (!g_initialized)
             return;
+        g_text_buffer = {};
+        g_overlay = {};
+        g_font_atlas = {};
 
         g_vertex_buffer = {};
         g_index_buffer = {};

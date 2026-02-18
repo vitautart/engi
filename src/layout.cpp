@@ -2,6 +2,7 @@
 
 #include <rendering.hpp>
 #include <utility>
+#include <cassert>
 
 namespace engi::vk
 {
@@ -44,8 +45,9 @@ Layout& Layout::operator=(Layout&& other) noexcept
     return *this;
 }
 
-auto LayoutBuilder::set() -> LayoutBuilder&
+auto LayoutBuilder::set(bool is_push_descriptor) -> LayoutBuilder&
 {
+    m_descriptor_set_layout_flags.push_back(is_push_descriptor ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT : 0);
     m_sets.emplace_back();
     return *this;
 }
@@ -69,15 +71,17 @@ auto LayoutBuilder::push_const(uint32_t offset, uint32_t size, VkShaderStageFlag
 
 auto LayoutBuilder::build() -> std::expected<Layout, VkResult>
 {
+    assert(m_descriptor_set_layout_flags.size() == m_sets.size());
     std::vector<VkDescriptorSetLayout> created_layouts;
     created_layouts.reserve(m_sets.size());
 
+    size_t flags_index = 0;
     for (const auto& set_bindings : m_sets)
     {
         VkDescriptorSetLayoutCreateInfo info{
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             .pNext = nullptr,
-            .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
+            .flags = m_descriptor_set_layout_flags[flags_index++],
             .bindingCount = static_cast<uint32_t>(set_bindings.size()),
             .pBindings = set_bindings.data()
         };
