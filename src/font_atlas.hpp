@@ -4,6 +4,7 @@
 #include <expected>
 #include <map>
 #include <vector>
+#include <span>
 #include <filesystem>
 #include <string_view>
 #include <vulkan/vulkan.h>
@@ -19,6 +20,11 @@ namespace engi::vk
         int16_t u0, v0, u1, v1;  // texcoord in bitmap
         int16_t advance;
         int16_t image_id;
+    };
+    struct CharRange
+    {
+        int first_char;
+        int char_count;
     };
 
     class IFontAtlas
@@ -55,7 +61,7 @@ namespace engi::vk
             int line_height,
             uint32_t bitmap_width,
             uint32_t bitmap_height,
-            Buffer& staging_buffer
+            std::span<CharRange> char_ranges = {}
         ) -> std::expected<FontMonoAtlas, VkResult>;
 
         static auto create(
@@ -63,7 +69,9 @@ namespace engi::vk
             const std::filesystem::path& font_path,
             int line_height,
             uint32_t bitmap_width,
-            uint32_t bitmap_height
+            uint32_t bitmap_height,
+            Buffer& staging_buffer,
+            std::span<CharRange> char_ranges = {}
         ) -> std::expected<FontMonoAtlas, VkResult>;
 
         // IFontAtlas interface
