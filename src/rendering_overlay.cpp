@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <print>
+#include <vector>
 
 namespace engi::vk
 {
@@ -151,7 +152,7 @@ namespace engi::vk
         // Layout: set 0 - combined image sampler, plus push constants for viewport params
         auto layout_res = LayoutBuilder()
             .set(false)
-            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)
+            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, static_cast<uint32_t>(atlas.image_count()))
             .push_const(0, sizeof(PushConstants), VK_SHADER_STAGE_VERTEX_BIT)
             .build();
 
@@ -264,7 +265,7 @@ namespace engi::vk
         VkDescriptorPoolSize pool_size
         {
             .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1
+            .descriptorCount = static_cast<uint32_t>(atlas.image_count())
         };
 
         VkDescriptorPoolCreateInfo pool_info
@@ -306,12 +307,16 @@ namespace engi::vk
             return false;
         }
 
-        VkDescriptorImageInfo image_info
+        std::vector<VkDescriptorImageInfo> image_infos;
+        image_infos.reserve(atlas.image_count());
+        for (size_t i = 0; i < atlas.image_count(); ++i)
         {
-            .sampler = m_font_sampler,
-            .imageView = atlas.image_view(),
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-        };
+            image_infos.push_back(VkDescriptorImageInfo{
+                .sampler = m_font_sampler,
+                .imageView = atlas.image_view(i),
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            });
+        }
 
         VkWriteDescriptorSet write
         {
@@ -320,9 +325,9 @@ namespace engi::vk
             .dstSet = m_desc_set,
             .dstBinding = 0,
             .dstArrayElement = 0,
-            .descriptorCount = 1,
+            .descriptorCount = static_cast<uint32_t>(image_infos.size()),
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &image_info,
+            .pImageInfo = image_infos.data(),
             .pBufferInfo = nullptr,
             .pTexelBufferView = nullptr
         };

@@ -7,11 +7,11 @@ layout (location = 2) flat in uint in_img;
 
 layout (location = 0) out vec4 out_color;
 
-layout (set = 0, binding = 0) uniform sampler2D u_font_atlas;
+layout (set = 0, binding = 0) uniform sampler2D u_font_atlas[];
 
 void main()
 {
-    float alpha = textureLod(u_font_atlas, in_uv, 0).r;
+    float alpha = textureLod(u_font_atlas[in_img], in_uv, 0).r;
     out_color = vec4(in_color.rgb, in_color.a * alpha);
 }
 

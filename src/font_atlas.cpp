@@ -129,43 +129,202 @@ namespace engi::vk
 
         staging_buffer = std::move(staging_buffer_res.value());
 
-        // Bake font into bitmap
-        auto fetch_glyph_info = [&out](int codepoint, int x0, int y0, int x1, int y1, int u0, int v0, int u1, int v1, int advance)
+        // Bake font into one or more bitmaps (if glyphs don't fit into a single image)
+        int first_char = 32;
+        int total_chars = 96;
+        int remaining = total_chars;
+        int atlas_index = 0;
+
+        while (remaining > 0)
         {
-            out.m_glyph_map.emplace(codepoint, Glyph{
-                .x0 = static_cast<int16_t>(x0),
-                .y0 = static_cast<int16_t>(y0),
-                .x1 = static_cast<int16_t>(x1),
-                .y1 = static_cast<int16_t>(y1),
-                .u0 = static_cast<int16_t>(u0),
-                .v0 = static_cast<int16_t>(v0),
-                .u1 = static_cast<int16_t>(u1),
-                .v1 = static_cast<int16_t>(v1),
-                .advance = static_cast<int16_t>(advance),
-                .image_id = static_cast<int16_t>(0) // TODO: add more images for more chars if needed
-            });
+            // fetch glyph info writes glyphs into glyph_map and stamps the current atlas_index
+            auto fetch_glyph_info = [&out, &atlas_index](int codepoint, int x0, int y0, int x1, int y1, int u0, int v0, int u1, int v1, int advance)
+            {
+                out.m_glyph_map.emplace(codepoint, Glyph{
+                    .x0 = static_cast<int16_t>(x0),
+                    .y0 = static_cast<int16_t>(y0),
+                    .x1 = static_cast<int16_t>(x1),
+                    .y1 = static_cast<int16_t>(y1),
+                    .u0 = static_cast<int16_t>(u0),
+                    .v0 = static_cast<int16_t>(v0),
+                    .u1 = static_cast<int16_t>(u1),
+                    .v1 = static_cast<int16_t>(v1),
+                    .advance = static_cast<int16_t>(advance),
+                    .image_id = static_cast<int16_t>(atlas_index)
+                });
 
-            out.m_advance = advance;
-        };
+                out.m_advance = advance;
+            };
 
-        int res = stbtt_BakeFontBitmap(
-            font_data.data(),
-            stbtt_GetFontOffsetForIndex(font_data.data(), 0),
-            static_cast<float>(line_height),
-            static_cast<unsigned char*>(staging_buffer.data()),
-            static_cast<int>(bitmap_width),
-            static_cast<int>(bitmap_height),
-            32,
-            96,
-            fetch_glyph_info
-        );
+            int res = stbtt_BakeFontBitmap(
+                font_data.data(),
+                stbtt_GetFontOffsetForIndex(font_data.data(), 0),
+                static_cast<float>(line_height),
+                static_cast<unsigned char*>(staging_buffer.data()),
+                static_cast<int>(bitmap_width),
+                static_cast<int>(bitmap_height),
+                first_char,
+                remaining,
+                fetch_glyph_info
+            );
 
-        if (res <= 0)
-        {
-            std::println("[ERROR] Font baking failed: {}", res);
-            return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+            if (res == 0)
+            {
+                std::println("[ERROR] Font baking failed.");
+                return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+            }
+
+            int baked_count = 0;
+            if (res < 0)
+            {
+                baked_count = -res; // number of chars baked before running out
+            }
+            else
+            {
+                baked_count = remaining; // all requested chars fit
+            }
+
+            // Create GPU image for this atlas page
+            VkImageCreateInfo image_info = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = VK_FORMAT_R8_UNORM, // do not forget change descriptor
+                .extent = {bitmap_width, bitmap_height, 1},
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+            };
+
+            VkImageViewCreateInfo view_info = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .image = VK_NULL_HANDLE,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = image_info.format,
+                .components = engi::get_std_rgba_comp_mapping(),
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            auto image_result = Image::create(image_info, view_info);
+            if (!image_result)
+            {
+                std::println("[ERROR] Font image creation failed: {}", (int)image_result.error());
+                return std::unexpected(image_result.error());
+            }
+
+            out.m_atlases.push_back(std::move(image_result.value()));
+
+            // Transition image to transfer-dst-optimal
+            VkImageMemoryBarrier2 image_barrier = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .pNext = nullptr,
+                .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+                .srcAccessMask = VK_ACCESS_2_NONE,
+                .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = out.m_atlases.back().image(),
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            VkDependencyInfo dep_info = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .pNext = nullptr,
+                .dependencyFlags = 0,
+                .memoryBarrierCount = 0,
+                .pMemoryBarriers = nullptr,
+                .bufferMemoryBarrierCount = 0,
+                .pBufferMemoryBarriers = nullptr,
+                .imageMemoryBarrierCount = 1,
+                .pImageMemoryBarriers = &image_barrier
+            };
+
+            vkCmdPipelineBarrier2(cmd, &dep_info);
+
+            // Copy buffer to image
+            VkBufferImageCopy copy_info = {
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+                .imageSubresource = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .imageOffset = {0, 0, 0},
+                .imageExtent = image_info.extent
+            };
+
+            vkCmdCopyBufferToImage(cmd, staging_buffer.buffer(), out.m_atlases.back().image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
+
+            // Transition image to shader-read-only-optimal
+            image_barrier = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                .pNext = nullptr,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = out.m_atlases.back().image(),
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                }
+            };
+
+            dep_info = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .pNext = nullptr,
+                .dependencyFlags = 0,
+                .memoryBarrierCount = 0,
+                .pMemoryBarriers = nullptr,
+                .bufferMemoryBarrierCount = 0,
+                .pBufferMemoryBarriers = nullptr,
+                .imageMemoryBarrierCount = 1,
+                .pImageMemoryBarriers = &image_barrier
+            };
+
+            vkCmdPipelineBarrier2(cmd, &dep_info);
+
+            // advance to next chunk
+            first_char += baked_count;
+            remaining -= baked_count;
+            ++atlas_index;
         }
 
+        // Ensure H and x glyphs exist
         auto glyph_h = out.m_glyph_map.find('H');
         auto glyph_x = out.m_glyph_map.find('x');
         if (glyph_h == out.m_glyph_map.end() || glyph_x == out.m_glyph_map.end())
@@ -176,140 +335,6 @@ namespace engi::vk
 
         out.m_cap_height = - glyph_h->second.y0;
         out.m_x_height = - glyph_x->second.y0;
-
-        // Create GPU image
-        VkImageCreateInfo image_info = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .imageType = VK_IMAGE_TYPE_2D,
-            .format = VK_FORMAT_R8_UNORM, // do not forget change descriptor
-            .extent = {bitmap_width, bitmap_height, 1},
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .samples = VK_SAMPLE_COUNT_1_BIT,
-            .tiling = VK_IMAGE_TILING_OPTIMAL,
-            .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = nullptr,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
-        };
-
-        VkImageViewCreateInfo view_info = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .image = VK_NULL_HANDLE,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = image_info.format,
-            .components = engi::get_std_rgba_comp_mapping(),
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-
-        auto image_result = Image::create(image_info, view_info);
-        if (!image_result)
-        {
-            std::println("[ERROR] Font image creation failed: {}", (int)image_result.error());
-            return std::unexpected(image_result.error());
-        }
-
-        out.m_atlas = std::move(image_result.value());
-
-        // Transition image to transfer-dst-optimal
-        VkImageMemoryBarrier2 image_barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .pNext = nullptr,
-            .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
-            .srcAccessMask = VK_ACCESS_2_NONE,
-            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = out.m_atlas.image(),
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-
-        VkDependencyInfo dep_info = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .pNext = nullptr,
-            .dependencyFlags = 0,
-            .memoryBarrierCount = 0,
-            .pMemoryBarriers = nullptr,
-            .bufferMemoryBarrierCount = 0,
-            .pBufferMemoryBarriers = nullptr,
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &image_barrier
-        };
-
-        vkCmdPipelineBarrier2(cmd, &dep_info);
-
-        // Copy buffer to image
-        VkBufferImageCopy copy_info = {
-            .bufferOffset = 0,
-            .bufferRowLength = 0,
-            .bufferImageHeight = 0,
-            .imageSubresource = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .mipLevel = 0,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            },
-            .imageOffset = {0, 0, 0},
-            .imageExtent = image_info.extent
-        };
-
-        vkCmdCopyBufferToImage(cmd, staging_buffer.buffer(), out.m_atlas.image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
-
-        // Transition image to shader-read-only-optimal
-        image_barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .pNext = nullptr,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = out.m_atlas.image(),
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-
-        dep_info = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .pNext = nullptr,
-            .dependencyFlags = 0,
-            .memoryBarrierCount = 0,
-            .pMemoryBarriers = nullptr,
-            .bufferMemoryBarrierCount = 0,
-            .pBufferMemoryBarriers = nullptr,
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &image_barrier
-        };
-
-        vkCmdPipelineBarrier2(cmd, &dep_info);
 
         return out;
     }
