@@ -5,6 +5,7 @@
 #include <print>
 #include <rendering.hpp>
 #include "rendering_overlay.hpp"
+#include "ui_system.hpp"
 #include <pipeline.hpp>
 #include <layout.hpp>
 #include <static_buffer.hpp>
@@ -104,6 +105,11 @@ namespace TestCube
     engi::vk::TextBuffer g_text_buffer;
     engi::vk::GeometryBuffer2D g_geo_buffer;
     engi::vk::GeometryBuffer2DWire g_geo_wire_buffer;
+
+    // UI system test
+    engi::ui::UISystem g_ui;
+    engi::ui::UILabel* g_counter_label = nullptr;
+    int g_click_count = 0;
 
     auto init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     {
@@ -236,7 +242,8 @@ namespace TestCube
         auto font_res = engi::vk::FontMonoAtlas::create(
             cmd,
             std::filesystem::path("resources/fonts/iosevka-fixed-regular.ttf"),
-            16,
+            //16,
+            32,
             512u,
             512u
         );
@@ -258,7 +265,7 @@ namespace TestCube
                 {
                     g_text_buffer = std::move(tb_res.value());
                     g_text_buffer.clear();
-                    g_text_buffer.add(L"Hello engi", go::vf2{10.0f, 10.0f}, go::vu4{255,255,255,255});
+                    g_text_buffer.add(L"Hello engi", go::vf2{10.0f, 20.0f}, go::vu4{255,255,255,255});
                     if (g_text_buffer.upload(cmd))
                         engi::vk::add_vertex_buffer_write_barrier(g_text_buffer.vertex_buffer());
                 }
@@ -292,6 +299,49 @@ namespace TestCube
                 }
 
                 engi::vk::cmd_sync_barriers(cmd);
+
+                // Initialize UI system example
+                if (g_ui.init(font_id))
+                {
+                    auto& root = g_ui.root();
+                    root.layout = engi::ui::Layout::Vertical;
+                    root.padding = 10.0f;
+                    root.spacing = 8.0f;
+                    root.bg_color = {20, 20, 35, 200};
+
+                    auto* title = root.add_new<engi::ui::UILabel>();
+                    title->text = L"UI System Demo";
+                    title->color = {255, 220, 100, 255};
+                    title->size = {200.0f, 24.0f};
+
+                    auto* btn_hello = root.add_new<engi::ui::UIButton>();
+                    btn_hello->label = L"Say Hello";
+                    btn_hello->size = {150.0f, 32.0f};
+                    btn_hello->on_click = [](){ std::println("[UI] Hello from button!"); };
+
+                    g_counter_label = root.add_new<engi::ui::UILabel>();
+                    g_counter_label->text = L"Clicks: 0";
+                    g_counter_label->size = {200.0f, 24.0f};
+
+                    auto* btn_count = root.add_new<engi::ui::UIButton>();
+                    btn_count->label = L"Count Click";
+                    btn_count->size = {150.0f, 32.0f};
+                    btn_count->color_normal = {50, 80, 50, 255};
+                    btn_count->color_hover = {70, 110, 70, 255};
+                    btn_count->color_pressed = {30, 60, 30, 255};
+                    btn_count->on_click = []()
+                    {
+                        g_click_count++;
+                        g_counter_label->text = L"Clicks: " + std::to_wstring(g_click_count);
+                    };
+
+                    auto* slider = root.add_new<engi::ui::UISlider>();
+                    slider->size = {200.0f, 24.0f};
+                    slider->value = 0.5f;
+                    slider->on_change = [](float v){ std::println("[UI] Slider: {:.2f}", v); };
+
+                    std::println("[INFO] UI system initialized");
+                }
             }
         }
     }
@@ -345,7 +395,10 @@ namespace TestCube
         engi::vk::add_vertex_buffer_write_barrier(g_vertex_buffer_dynamic.buffer());
         engi::vk::cmd_sync_barriers(cmd);
 
+        // Sync UI buffers (upload + barriers) before render pass
         VkRect2D full_rect = { .offset = {0, 0}, .extent = {800, 600} };
+        g_ui.sync(cmd, full_rect);
+
         engi::vk::draw_start(cmd, full_rect, {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f});
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipeline.get());
@@ -373,6 +426,9 @@ namespace TestCube
         g_overlay.start_text_draw(cmd);
         g_overlay.draw(cmd, g_text_buffer, full_rect);
 
+        // Draw UI system (inside the render pass)
+        g_ui.draw(cmd, g_overlay, full_rect);
+
         engi::vk::draw_end(cmd);
     }
 
@@ -380,6 +436,8 @@ namespace TestCube
     {
         if (!g_initialized)
             return;
+        g_counter_label = nullptr;
+        g_ui = {};
         g_geo_buffer = {};
         g_geo_wire_buffer = {};
         g_text_buffer = {};
@@ -434,6 +492,7 @@ auto engi::App::fnResizeExterior(GLFWwindow* window, int width,int height) -> vo
 
 auto engi::App::fn_text_input_interior(unsigned int codepoint) -> void
 {
+    TestCube::g_ui.process_text_input(codepoint);
 }
 
 auto engi::App::fn_key_press_interior(int key, int scancode, int action, int mods) -> void
@@ -442,22 +501,26 @@ auto engi::App::fn_key_press_interior(int key, int scancode, int action, int mod
     {
         glfwSetWindowShouldClose(m_glfw_window, true);
     }
+    TestCube::g_ui.process_key(key, action, mods);
 }
 
 auto engi::App::fn_mouse_press_interior(int button, int action, int mods) -> void
 {
     double x, y;
     glfwGetCursorPos(m_glfw_window, &x, &y);
+    TestCube::g_ui.process_mouse_press(button, action);
 }
 
 auto engi::App::fn_mouse_move_interior(double x, double y) -> void
 {
+    TestCube::g_ui.process_mouse_move(static_cast<float>(x), static_cast<float>(y));
 }
 
 auto engi::App::fn_scroll_interior(double xoffset, double yoffset) -> void
 {
     double x, y;
     glfwGetCursorPos(m_glfw_window, &x, &y);
+    TestCube::g_ui.process_scroll(static_cast<float>(xoffset), static_cast<float>(yoffset));
 }
 
 auto engi::App::fn_resize_interior(int width,int height) -> void
