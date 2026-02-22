@@ -247,11 +247,12 @@ namespace TestCube
             {
                 g_font_atlas = std::move(font_res.value());
 
-                if (!g_overlay.init(g_font_atlas))
+                auto font_id = g_overlay.add_font(&g_font_atlas);
+                if (!g_overlay.init())
                     std::println("[WARNING] Failed to init rendering overlay");
                 else
                 {
-                    auto tb_res = engi::vk::TextBuffer::create(&g_font_atlas);
+                    auto tb_res = engi::vk::TextBuffer::create(font_id);
                     if (!tb_res)
                         std::println("[WARNING] Failed to create text buffer");
                     else

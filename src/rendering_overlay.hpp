@@ -14,12 +14,26 @@
 
 namespace engi::vk
 {
+    struct FontId
+    {
+        const IFontAtlas* ptr = nullptr;
+        size_t image_offset = 0;
+    };
+
     struct CharVertex
     {
         go::vf2 pos;
         go::vf2 uv;   // unnormalized atlas coordinates (pixels)
         go::u32 col;  // packed sRGBA (unorm4x8)
         go::u32 image;
+    };
+
+    struct Geometry2DVertex
+    {
+        go::vf2 pos;
+        go::vf2 uv;    // not used for now
+        go::u32 col;   // packed sRGBA (unorm4x8)
+        go::u32 image; // not used for now
     };
 
     class TextBuffer
@@ -32,7 +46,7 @@ namespace engi::vk
         auto operator=(TextBuffer&&) noexcept -> TextBuffer& = default;
         ~TextBuffer() = default;
 
-        static auto create(const IFontAtlas* atlas) -> std::expected<TextBuffer, VkResult>;
+        static auto create(FontId font) -> std::expected<TextBuffer, VkResult>;
 
         auto clear() noexcept -> void;
 
@@ -47,8 +61,9 @@ namespace engi::vk
         std::vector<CharVertex> m_vertices;
         DynamicBuffer m_gpu_buffer;
         uint32_t m_vertex_count = 0;
-        const IFontAtlas* m_atlas = nullptr; // non-owning reference
+        FontId m_font_id;
     };
+
 
     class RenderingOverlay
     {
@@ -60,8 +75,8 @@ namespace engi::vk
             : m_font_sampler(other.m_font_sampler)
             , m_desc_pool(other.m_desc_pool)
             , m_desc_set(other.m_desc_set)
-            , m_layout(std::move(other.m_layout))
             , m_pipeline(std::move(other.m_pipeline))
+            , m_fonts(std::move(other.m_fonts))
             , m_initialized(other.m_initialized)
         {
             other.m_font_sampler = VK_NULL_HANDLE;
@@ -81,6 +96,7 @@ namespace engi::vk
                 m_desc_set = other.m_desc_set;
                 m_layout = std::move(other.m_layout);
                 m_pipeline = std::move(other.m_pipeline);
+                m_fonts = std::move(other.m_fonts);
                 m_initialized = other.m_initialized;
 
                 other.m_font_sampler = VK_NULL_HANDLE;
@@ -92,8 +108,11 @@ namespace engi::vk
         }
         ~RenderingOverlay();
 
-        // Initializes pipeline, layout, sampler and descriptor set for given font atlas.
-        auto init(const IFontAtlas& atlas) noexcept -> bool;
+        // Registers font and returns its ID. Must be called before init().
+        auto add_font(IFontAtlas* atlas) -> FontId;
+
+        // Initializes pipeline, layout, sampler and descriptor set for all added fonts.
+        auto init() noexcept -> bool;
 
         // Draws text buffer inside given viewport rectangle.
         auto start_text_draw(VkCommandBuffer cmd) noexcept -> void;
@@ -118,7 +137,9 @@ namespace engi::vk
 
         Layout m_layout;
         Pipeline m_pipeline;
+        std::vector<IFontAtlas*> m_fonts;
         bool m_initialized = false;
     };
+
 }
 

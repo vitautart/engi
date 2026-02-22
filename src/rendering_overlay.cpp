@@ -9,10 +9,10 @@ namespace engi::vk
 {
     // ===== TextBuffer =====
 
-    auto TextBuffer::create(const IFontAtlas* atlas) -> std::expected<TextBuffer, VkResult>
+    auto TextBuffer::create(FontId font) -> std::expected<TextBuffer, VkResult>
     {
         TextBuffer out;
-        out.m_atlas = atlas;
+        out.m_font_id = font;
 
         // Start with space for 1024 characters (6 vertices per char)
         constexpr VkDeviceSize initial_vertex_count = 1024 * 6;
@@ -39,8 +39,8 @@ namespace engi::vk
     {
         go::f32 cursor_x = pos[0];
         go::f32 cursor_y = pos[1];
-
-        const auto line_height = static_cast<go::f32>(m_atlas->get_line_height());
+        const auto atlas = m_font_id.ptr;
+        const auto line_height = static_cast<go::f32>(atlas->get_line_height());
 
         // TODO: srgb to linear conversion?
         const go::u32 coloru32 = go::packUnorm4x8(color);
@@ -54,7 +54,7 @@ namespace engi::vk
                 continue;
             }
 
-            const Glyph* glyph = m_atlas->get_glyph(static_cast<int>(ch));
+            const Glyph* glyph = atlas->get_glyph(static_cast<int>(ch));
             if (!glyph)
                 continue;
 
@@ -68,7 +68,7 @@ namespace engi::vk
             const go::f32 u1 = static_cast<go::f32>(glyph->u1);
             const go::f32 v1 = static_cast<go::f32>(glyph->v1);
 
-            const go::u32 image_id = static_cast<go::u32>(glyph->image_id);
+            const go::u32 image_id = static_cast<go::u32>(glyph->image_id) + static_cast<go::u32>(m_font_id.image_offset);
 
             // Two triangles (non-indexed)
             CharVertex vtx[6] =
@@ -142,17 +142,34 @@ namespace engi::vk
         m_initialized = false;
     }
 
-    auto RenderingOverlay::init(const IFontAtlas& atlas) noexcept -> bool
+    auto RenderingOverlay::add_font(IFontAtlas* atlas) -> FontId
+    {
+        size_t offset = 0;
+        for (auto* f : m_fonts)
+        {
+            offset += f->image_count();
+        }
+        m_fonts.push_back(atlas);
+        return { .ptr = atlas, .image_offset = offset };
+    }
+
+    auto RenderingOverlay::init() noexcept -> bool
     {
         if (m_initialized)
             return true;
+
+        size_t total_image_count = 0;
+        for (auto* f : m_fonts)
+        {
+            total_image_count += f->image_count();
+        }
 
         auto dev = device();
 
         // Layout: set 0 - combined image sampler, plus push constants for viewport params
         auto layout_res = LayoutBuilder()
             .set(false)
-            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, static_cast<uint32_t>(atlas.image_count()))
+            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, static_cast<uint32_t>(total_image_count))
             .push_const(0, sizeof(PushConstants), VK_SHADER_STAGE_VERTEX_BIT)
             .build();
 
@@ -265,7 +282,7 @@ namespace engi::vk
         VkDescriptorPoolSize pool_size
         {
             .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = static_cast<uint32_t>(atlas.image_count())
+            .descriptorCount = static_cast<uint32_t>(total_image_count)
         };
 
         VkDescriptorPoolCreateInfo pool_info
@@ -308,14 +325,17 @@ namespace engi::vk
         }
 
         std::vector<VkDescriptorImageInfo> image_infos;
-        image_infos.reserve(atlas.image_count());
-        for (size_t i = 0; i < atlas.image_count(); ++i)
+        image_infos.reserve(total_image_count);
+        for (auto* atlas : m_fonts)
         {
-            image_infos.push_back(VkDescriptorImageInfo{
-                .sampler = m_font_sampler,
-                .imageView = atlas.image_view(i),
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            });
+            for (size_t i = 0; i < atlas->image_count(); ++i)
+            {
+                image_infos.push_back(VkDescriptorImageInfo{
+                    .sampler = m_font_sampler,
+                    .imageView = atlas->image_view(i),
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                });
+            }
         }
 
         VkWriteDescriptorSet write
