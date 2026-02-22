@@ -102,6 +102,8 @@ namespace TestCube
     engi::vk::FontMonoAtlas g_font_atlas;
     engi::vk::RenderingOverlay g_overlay;
     engi::vk::TextBuffer g_text_buffer;
+    engi::vk::GeometryBuffer2D g_geo_buffer;
+    engi::vk::GeometryBuffer2DWire g_geo_wire_buffer;
 
     auto init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     {
@@ -231,45 +233,65 @@ namespace TestCube
         std::println("[INFO] Cube rendering initialized");
 
         // Initialize font atlas, overlay and a static text buffer
+        auto font_res = engi::vk::FontMonoAtlas::create(
+            cmd,
+            std::filesystem::path("resources/fonts/iosevka-fixed-regular.ttf"),
+            16,
+            512u,
+            512u
+        );
+        if (!font_res)
         {
-            auto font_res = engi::vk::FontMonoAtlas::create(
-                cmd,
-                std::filesystem::path("resources/fonts/iosevka-fixed-regular.ttf"),
-                16,
-                512u,
-                512u
-            );
-            if (!font_res)
-            {
-                std::println("[WARNING] Failed to create font atlas");
-            }
+            std::println("[WARNING] Failed to create font atlas");
+        }
+        else
+        {
+            g_font_atlas = std::move(font_res.value());
+
+            auto font_id = g_overlay.add_font(&g_font_atlas);
+            if (!g_overlay.init())
+                std::println("[WARNING] Failed to init rendering overlay");
             else
             {
-                g_font_atlas = std::move(font_res.value());
-
-                auto font_id = g_overlay.add_font(&g_font_atlas);
-                if (!g_overlay.init())
-                    std::println("[WARNING] Failed to init rendering overlay");
-                else
+                auto tb_res = engi::vk::TextBuffer::create(font_id);
+                if (tb_res)
                 {
-                    auto tb_res = engi::vk::TextBuffer::create(font_id);
-                    if (!tb_res)
-                        std::println("[WARNING] Failed to create text buffer");
-                    else
+                    g_text_buffer = std::move(tb_res.value());
+                    g_text_buffer.clear();
+                    g_text_buffer.add(L"Hello engi", go::vf2{10.0f, 10.0f}, go::vu4{255,255,255,255});
+                    if (g_text_buffer.upload(cmd))
+                        engi::vk::add_vertex_buffer_write_barrier(g_text_buffer.vertex_buffer());
+                }
+
+                auto gb_res = engi::vk::GeometryBuffer2D::create();
+                if (gb_res)
+                {
+                    g_geo_buffer = std::move(gb_res.value());
+                    g_geo_buffer.clear();
+                    g_geo_buffer.add_rect(go::vf2{10.0f, 40.0f}, go::vf2{100.0f, 50.0f}, go::vu4{200, 50, 50, 255});
+                    g_geo_buffer.add_rect(go::vf2{120.0f, 40.0f}, go::vf2{100.0f, 50.0f}, go::vu4{50, 200, 50, 255});
+                    if (g_geo_buffer.upload(cmd))
                     {
-                        g_text_buffer = std::move(tb_res.value());
-                        g_text_buffer.clear();
-                        g_text_buffer.add(L"Hello engi", go::vf2{10.0f, 10.0f}, go::vu4{255,255,255,255});
-                        auto up = g_text_buffer.upload(cmd);
-                        if (!up)
-                            std::println("[WARNING] Failed to upload text buffer");
-                        else
-                        {
-                            engi::vk::add_vertex_buffer_write_barrier(g_text_buffer.vertex_buffer());
-                            engi::vk::cmd_sync_barriers(cmd);
-                        }
+                        engi::vk::add_vertex_buffer_write_barrier(g_geo_buffer.vertex_buffer());
+                        engi::vk::add_index_buffer_write_barrier(g_geo_buffer.index_buffer());
                     }
                 }
+
+                auto gbw_res = engi::vk::GeometryBuffer2DWire::create();
+                if (gbw_res)
+                {
+                    g_geo_wire_buffer = std::move(gbw_res.value());
+                    g_geo_wire_buffer.clear();
+                    g_geo_wire_buffer.add_rect(go::vf2{10.0f, 100.0f}, go::vf2{100.0f, 50.0f}, go::vu4{255, 255, 0, 255});
+                    g_geo_wire_buffer.add_rect(go::vf2{120.0f, 100.0f}, go::vf2{100.0f, 50.0f}, go::vu4{0, 255, 255, 255});
+                    if (g_geo_wire_buffer.upload(cmd))
+                    {
+                        engi::vk::add_vertex_buffer_write_barrier(g_geo_wire_buffer.vertex_buffer());
+                        engi::vk::add_index_buffer_write_barrier(g_geo_wire_buffer.index_buffer());
+                    }
+                }
+
+                engi::vk::cmd_sync_barriers(cmd);
             }
         }
     }
@@ -342,6 +364,12 @@ namespace TestCube
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb_dynamic, &offset);
         vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
 
+        g_overlay.start_draw_2d(cmd);
+        g_overlay.draw(cmd, g_geo_buffer, full_rect);
+
+        g_overlay.start_draw_2d_wire(cmd);
+        g_overlay.draw(cmd, g_geo_wire_buffer, full_rect);
+
         g_overlay.start_text_draw(cmd);
         g_overlay.draw(cmd, g_text_buffer, full_rect);
 
@@ -352,6 +380,8 @@ namespace TestCube
     {
         if (!g_initialized)
             return;
+        g_geo_buffer = {};
+        g_geo_wire_buffer = {};
         g_text_buffer = {};
         g_overlay = {};
         g_font_atlas = {};

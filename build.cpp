@@ -70,6 +70,10 @@ static const std::array SHADERS =
     "src/shaders/cube.frag",
     "src/shaders/text.vert",
     "src/shaders/text.frag",
+    "src/shaders/rect.vert",
+    "src/shaders/rect.frag",
+    "src/shaders/rect_wire.vert",
+    "src/shaders/rect_wire.frag",
 };
 
 static const fs::path IOSEVKA_TTF = fs::path("external/iosevka/iosevka-fixed-regular.ttf");

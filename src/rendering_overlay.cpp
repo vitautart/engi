@@ -115,7 +115,181 @@ namespace engi::vk
         return m_vertex_count;
     }
 
+    // ===== GeometryBuffer2D =====
+
+    auto GeometryBuffer2D::create() -> std::expected<GeometryBuffer2D, VkResult>
+    {
+        GeometryBuffer2D out;
+        constexpr VkDeviceSize initial_vertex_count = 1024;
+        constexpr VkDeviceSize initial_index_count = 1024 * 3;
+
+        auto vb = DynamicBuffer::create(initial_vertex_count * sizeof(Vertex2D), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        if (!vb) return std::unexpected(vb.error());
+        out.m_vertex_gpu = std::move(vb.value());
+
+        auto ib = DynamicBuffer::create(initial_index_count * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        if (!ib) return std::unexpected(ib.error());
+        out.m_index_gpu = std::move(ib.value());
+
+        return out;
+    }
+
+    auto GeometryBuffer2D::clear() noexcept -> void
+    {
+        m_vertices.clear();
+        m_indices.clear();
+        m_index_count = 0;
+    }
+
+    auto GeometryBuffer2D::add_rect(const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void
+    {
+        const go::u32 col = go::packUnorm4x8(color);
+        const uint32_t first_vtx = static_cast<uint32_t>(m_vertices.size());
+
+        m_vertices.push_back({ {pos[0], pos[1]}, {0, 0}, col, 0 });
+        m_vertices.push_back({ {pos[0] + size[0], pos[1]}, {1, 0}, col, 0 });
+        m_vertices.push_back({ {pos[0] + size[0], pos[1] + size[1]}, {1, 1}, col, 0 });
+        m_vertices.push_back({ {pos[0], pos[1] + size[1]}, {0, 1}, col, 0 });
+
+        m_indices.push_back(first_vtx + 0);
+        m_indices.push_back(first_vtx + 1);
+        m_indices.push_back(first_vtx + 2);
+        m_indices.push_back(first_vtx + 0);
+        m_indices.push_back(first_vtx + 2);
+        m_indices.push_back(first_vtx + 3);
+
+        m_index_count = static_cast<uint32_t>(m_indices.size());
+    }
+
+    auto GeometryBuffer2D::upload(VkCommandBuffer cmd) noexcept -> std::expected<void, VkResult>
+    {
+        if (m_indices.empty())
+        {
+            m_index_count = 0;
+            return {};
+        }
+
+        auto res_v = m_vertex_gpu.write_to_gpu(cmd, m_vertices.data(), m_vertices.size() * sizeof(Vertex2D));
+        if (!res_v) return res_v;
+
+        auto res_i = m_index_gpu.write_to_gpu(cmd, m_indices.data(), m_indices.size() * sizeof(uint32_t));
+        if (!res_i) return res_i;
+
+        return {};
+    }
+
+    auto GeometryBuffer2D::vertex_buffer() const noexcept -> VkBuffer { return m_vertex_gpu.buffer(); }
+    auto GeometryBuffer2D::index_buffer() const noexcept -> VkBuffer { return m_index_gpu.buffer(); }
+    auto GeometryBuffer2D::index_count() const noexcept -> uint32_t { return m_index_count; }
+
+    // ===== GeometryBuffer2DWire =====
+
+    auto GeometryBuffer2DWire::create() -> std::expected<GeometryBuffer2DWire, VkResult>
+    {
+        GeometryBuffer2DWire out;
+        constexpr VkDeviceSize initial_vertex_count = 1024;
+        constexpr VkDeviceSize initial_index_count = 1024 * 2;
+
+        auto vb = DynamicBuffer::create(initial_vertex_count * sizeof(Vertex2DWire), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        if (!vb) return std::unexpected(vb.error());
+        out.m_vertex_gpu = std::move(vb.value());
+
+        auto ib = DynamicBuffer::create(initial_index_count * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        if (!ib) return std::unexpected(ib.error());
+        out.m_index_gpu = std::move(ib.value());
+
+        return out;
+    }
+
+    auto GeometryBuffer2DWire::clear() noexcept -> void
+    {
+        m_vertices.clear();
+        m_indices.clear();
+        m_index_count = 0;
+    }
+
+    auto GeometryBuffer2DWire::add_rect(const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void
+    {
+        const go::u32 col = go::packUnorm4x8(color);
+        const uint32_t first_vtx = static_cast<uint32_t>(m_vertices.size());
+
+        m_vertices.push_back({ {pos[0], pos[1]}, col });
+        m_vertices.push_back({ {pos[0] + size[0], pos[1]}, col });
+        m_vertices.push_back({ {pos[0] + size[0], pos[1] + size[1]}, col });
+        m_vertices.push_back({ {pos[0], pos[1] + size[1]}, col });
+
+        m_indices.push_back(first_vtx + 0); m_indices.push_back(first_vtx + 1);
+        m_indices.push_back(first_vtx + 1); m_indices.push_back(first_vtx + 2);
+        m_indices.push_back(first_vtx + 2); m_indices.push_back(first_vtx + 3);
+        m_indices.push_back(first_vtx + 3); m_indices.push_back(first_vtx + 0);
+
+        m_index_count = static_cast<uint32_t>(m_indices.size());
+    }
+
+    auto GeometryBuffer2DWire::upload(VkCommandBuffer cmd) noexcept -> std::expected<void, VkResult>
+    {
+        if (m_indices.empty())
+        {
+            m_index_count = 0;
+            return {};
+        }
+
+        auto res_v = m_vertex_gpu.write_to_gpu(cmd, m_vertices.data(), m_vertices.size() * sizeof(Vertex2DWire));
+        if (!res_v) return res_v;
+
+        auto res_i = m_index_gpu.write_to_gpu(cmd, m_indices.data(), m_indices.size() * sizeof(uint32_t));
+        if (!res_i) return res_i;
+
+        return {};
+    }
+
+    auto GeometryBuffer2DWire::vertex_buffer() const noexcept -> VkBuffer { return m_vertex_gpu.buffer(); }
+    auto GeometryBuffer2DWire::index_buffer() const noexcept -> VkBuffer { return m_index_gpu.buffer(); }
+    auto GeometryBuffer2DWire::index_count() const noexcept -> uint32_t { return m_index_count; }
+
+
     // ===== RenderingOverlay =====
+
+    RenderingOverlay::RenderingOverlay(RenderingOverlay&& other) noexcept
+        : m_font_sampler(other.m_font_sampler)
+        , m_desc_pool(other.m_desc_pool)
+        , m_desc_set(other.m_desc_set)
+        , m_layout(std::move(other.m_layout))
+        , m_pipeline_text(std::move(other.m_pipeline_text))
+        , m_pipeline_2d(std::move(other.m_pipeline_2d))
+        , m_pipeline_2d_wire(std::move(other.m_pipeline_2d_wire))
+        , m_fonts(std::move(other.m_fonts))
+        , m_initialized(other.m_initialized)
+    {
+        other.m_font_sampler = VK_NULL_HANDLE;
+        other.m_desc_pool = VK_NULL_HANDLE;
+        other.m_desc_set = VK_NULL_HANDLE;
+        other.m_initialized = false;
+    }
+
+    auto RenderingOverlay::operator=(RenderingOverlay&& other) noexcept -> RenderingOverlay&
+    {
+        if (this != &other)
+        {
+            destroy();
+
+            m_font_sampler = other.m_font_sampler;
+            m_desc_pool = other.m_desc_pool;
+            m_desc_set = other.m_desc_set;
+            m_layout = std::move(other.m_layout);
+            m_pipeline_text = std::move(other.m_pipeline_text);
+            m_pipeline_2d = std::move(other.m_pipeline_2d);
+            m_pipeline_2d_wire = std::move(other.m_pipeline_2d_wire);
+            m_fonts = std::move(other.m_fonts);
+            m_initialized = other.m_initialized;
+
+            other.m_font_sampler = VK_NULL_HANDLE;
+            other.m_desc_pool = VK_NULL_HANDLE;
+            other.m_desc_set = VK_NULL_HANDLE;
+            other.m_initialized = false;
+        }
+        return *this;
+    }
 
     RenderingOverlay::~RenderingOverlay()
     {
@@ -138,7 +312,9 @@ namespace engi::vk
 
         m_desc_set = VK_NULL_HANDLE;
         m_layout = {};
-        m_pipeline = {};
+        m_pipeline_text = {};
+        m_pipeline_2d = {};
+        m_pipeline_2d_wire = {};
         m_initialized = false;
     }
 
@@ -180,179 +356,169 @@ namespace engi::vk
         }
         m_layout = std::move(layout_res.value());
 
-        // Pipeline
-        VkVertexInputBindingDescription binding
+        // --- Text Pipeline ---
         {
-            .binding = 0,
-            .stride = static_cast<uint32_t>(sizeof(CharVertex)),
-            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-        };
+            VkVertexInputBindingDescription binding
+            {
+                .binding = 0,
+                .stride = static_cast<uint32_t>(sizeof(CharVertex)),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+            };
 
-        VkVertexInputAttributeDescription attr_pos
-        {
-            .location = 0,
-            .binding = 0,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = static_cast<uint32_t>(offsetof(CharVertex, pos))
-        };
+            VkVertexInputAttributeDescription attrs[] = {
+                { 0, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(CharVertex, pos)) },
+                { 1, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(CharVertex, uv)) },
+                { 2, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(CharVertex, col)) },
+                { 3, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(CharVertex, image)) }
+            };
 
-        VkVertexInputAttributeDescription attr_uv
-        {
-            .location = 1,
-            .binding = 0,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = static_cast<uint32_t>(offsetof(CharVertex, uv))
-        };
+            auto pipe_res = PipelineBuilder()
+                .vertex_shader_from_file("shaders/text_vert.spv")
+                .fragment_shader_from_file("shaders/text_frag.spv")
+                .color_format(color_format())
+                .depth_format(depth_format())
+                .samples(sample_count())
+                .add(binding)
+                .add(attrs[0]).add(attrs[1]).add(attrs[2]).add(attrs[3])
+                .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                .polygon_mode(VK_POLYGON_MODE_FILL)
+                .cull_mode(VK_CULL_MODE_NONE)
+                .front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                .depth_test(false)
+                .depth_write(false)
+                .depth_compare_op(VK_COMPARE_OP_ALWAYS)
+                .alpha_blending()
+                .build(m_layout.get());
 
-        VkVertexInputAttributeDescription attr_col
-        {
-            .location = 2,
-            .binding = 0,
-            .format = VK_FORMAT_R32_UINT,
-            .offset = static_cast<uint32_t>(offsetof(CharVertex, col))
-        };
-
-        VkVertexInputAttributeDescription attr_img
-        {
-            .location = 3,
-            .binding = 0,
-            .format = VK_FORMAT_R32_UINT,
-            .offset = static_cast<uint32_t>(offsetof(CharVertex, image))
-        };
-
-        auto pipe_res = PipelineBuilder()
-            .vertex_shader_from_file("shaders/text_vert.spv")
-            .fragment_shader_from_file("shaders/text_frag.spv")
-            .color_format(color_format())
-            .depth_format(depth_format())
-            .samples(sample_count())
-            .add(binding)
-            .add(attr_pos)
-            .add(attr_uv)
-            .add(attr_col)
-            .add(attr_img)
-            .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-            .polygon_mode(VK_POLYGON_MODE_FILL)
-            .cull_mode(VK_CULL_MODE_NONE)
-            .front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE)
-            .depth_test(false)
-            .depth_write(false)
-            .depth_compare_op(VK_COMPARE_OP_ALWAYS)
-            .alpha_blending()
-            .build(m_layout.get());
-
-        if (!pipe_res)
-        {
-            std::println("[ERROR] RenderingOverlay: pipeline creation failed: {}", (int)pipe_res.error());
-            return false;
+            if (!pipe_res) return false;
+            m_pipeline_text = std::move(pipe_res.value());
         }
-        m_pipeline = std::move(pipe_res.value());
+
+        // --- 2D Pipeline (Filled) ---
+        {
+            VkVertexInputBindingDescription binding
+            {
+                .binding = 0,
+                .stride = static_cast<uint32_t>(sizeof(Vertex2D)),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+            };
+
+            VkVertexInputAttributeDescription attrs[] = {
+                { 0, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(Vertex2D, pos)) },
+                { 1, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(Vertex2D, uv)) },
+                { 2, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(Vertex2D, col)) },
+                { 3, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(Vertex2D, image)) }
+            };
+
+            auto pipe_res = PipelineBuilder()
+                .vertex_shader_from_file("shaders/rect_vert.spv")
+                .fragment_shader_from_file("shaders/rect_frag.spv")
+                .color_format(color_format())
+                .depth_format(depth_format())
+                .samples(sample_count())
+                .add(binding)
+                .add(attrs[0]).add(attrs[1]).add(attrs[2]).add(attrs[3])
+                .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+                .polygon_mode(VK_POLYGON_MODE_FILL)
+                .cull_mode(VK_CULL_MODE_NONE)
+                .front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                .depth_test(false)
+                .depth_write(false)
+                .alpha_blending()
+                .build(m_layout.get());
+
+            if (!pipe_res) return false;
+            m_pipeline_2d = std::move(pipe_res.value());
+        }
+
+        // --- 2D Wire Pipeline ---
+        {
+            VkVertexInputBindingDescription binding
+            {
+                .binding = 0,
+                .stride = static_cast<uint32_t>(sizeof(Vertex2DWire)),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+            };
+
+            VkVertexInputAttributeDescription attrs[] = {
+                { 0, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(Vertex2DWire, pos)) },
+                { 1, 0, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(Vertex2DWire, col)) }
+            };
+
+            auto pipe_res = PipelineBuilder()
+                .vertex_shader_from_file("shaders/rect_wire_vert.spv")
+                .fragment_shader_from_file("shaders/rect_wire_frag.spv")
+                .color_format(color_format())
+                .depth_format(depth_format())
+                .samples(sample_count())
+                .add(binding)
+                .add(attrs[0]).add(attrs[1])
+                .topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
+                .polygon_mode(VK_POLYGON_MODE_LINE)
+                .cull_mode(VK_CULL_MODE_NONE)
+                .front_face(VK_FRONT_FACE_COUNTER_CLOCKWISE)
+                .depth_test(false)
+                .depth_write(false)
+                .alpha_blending()
+                .line_width(1.0f)
+                .build(m_layout.get());
+
+            if (!pipe_res) return false;
+            m_pipeline_2d_wire = std::move(pipe_res.value());
+        }
 
         // Sampler
         VkSamplerCreateInfo sampler_info
         {
             .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
             .magFilter = VK_FILTER_LINEAR,
             .minFilter = VK_FILTER_LINEAR,
             .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .mipLodBias = 0.0f,
-            .anisotropyEnable = VK_FALSE,
-            .maxAnisotropy = 1.0f,
-            .compareEnable = VK_FALSE,
-            .compareOp = VK_COMPARE_OP_ALWAYS,
-            .minLod = 0.0f,
-            .maxLod = 0.0f,
-            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
             .unnormalizedCoordinates = VK_TRUE
         };
 
         if (vkCreateSampler(dev, &sampler_info, nullptr, &m_font_sampler) != VK_SUCCESS)
         {
-            std::println("[ERROR] RenderingOverlay: sampler creation failed");
             destroy();
             return false;
         }
 
         // Descriptor pool and set
-        VkDescriptorPoolSize pool_size
+        if (total_image_count > 0)
         {
-            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = static_cast<uint32_t>(total_image_count)
-        };
+            VkDescriptorPoolSize pool_size { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(total_image_count) };
+            VkDescriptorPoolCreateInfo pool_info { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, 1, 1, &pool_size };
 
-        VkDescriptorPoolCreateInfo pool_info
-        {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .maxSets = 1,
-            .poolSizeCount = 1,
-            .pPoolSizes = &pool_size
-        };
-
-        if (vkCreateDescriptorPool(dev, &pool_info, nullptr, &m_desc_pool) != VK_SUCCESS)
-        {
-            std::println("[ERROR] RenderingOverlay: descriptor pool creation failed");
-            destroy();
-            return false;
-        }
-
-        VkDescriptorSetLayout set_layout = m_layout.descriptor_layouts().empty()
-            ? VK_NULL_HANDLE
-            : m_layout.descriptor_layouts()[0];
-
-        assert(set_layout != VK_NULL_HANDLE);
-
-        VkDescriptorSetAllocateInfo alloc_info
-        {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .pNext = nullptr,
-            .descriptorPool = m_desc_pool,
-            .descriptorSetCount = 1,
-            .pSetLayouts = &set_layout
-        };
-
-        if (vkAllocateDescriptorSets(dev, &alloc_info, &m_desc_set) != VK_SUCCESS)
-        {
-            std::println("[ERROR] RenderingOverlay: descriptor set allocation failed");
-            destroy();
-            return false;
-        }
-
-        std::vector<VkDescriptorImageInfo> image_infos;
-        image_infos.reserve(total_image_count);
-        for (auto* atlas : m_fonts)
-        {
-            for (size_t i = 0; i < atlas->image_count(); ++i)
+            if (vkCreateDescriptorPool(dev, &pool_info, nullptr, &m_desc_pool) != VK_SUCCESS)
             {
-                image_infos.push_back(VkDescriptorImageInfo{
-                    .sampler = m_font_sampler,
-                    .imageView = atlas->image_view(i),
-                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                });
+                destroy();
+                return false;
             }
+
+            VkDescriptorSetLayout set_layout = m_layout.descriptor_layouts()[0];
+            VkDescriptorSetAllocateInfo alloc_info { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, m_desc_pool, 1, &set_layout };
+
+            if (vkAllocateDescriptorSets(dev, &alloc_info, &m_desc_set) != VK_SUCCESS)
+            {
+                destroy();
+                return false;
+            }
+
+            std::vector<VkDescriptorImageInfo> image_infos;
+            for (auto* atlas : m_fonts)
+            {
+                for (size_t i = 0; i < atlas->image_count(); ++i)
+                {
+                    image_infos.push_back({ m_font_sampler, atlas->image_view(i), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
+                }
+            }
+
+            VkWriteDescriptorSet write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_desc_set, 0, 0, static_cast<uint32_t>(image_infos.size()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, image_infos.data() };
+            vkUpdateDescriptorSets(dev, 1, &write, 0, nullptr);
         }
-
-        VkWriteDescriptorSet write
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .pNext = nullptr,
-            .dstSet = m_desc_set,
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = static_cast<uint32_t>(image_infos.size()),
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = image_infos.data(),
-            .pBufferInfo = nullptr,
-            .pTexelBufferView = nullptr
-        };
-
-        vkUpdateDescriptorSets(dev, 1, &write, 0, nullptr);
 
         m_initialized = true;
         return true;
@@ -360,37 +526,23 @@ namespace engi::vk
 
     auto RenderingOverlay::start_text_draw(VkCommandBuffer cmd) noexcept -> void
     {
-        if (!m_initialized)
-            return;
-        assert(cmd != VK_NULL_HANDLE);
-
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline.get());
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout.get(), 0, 1, &m_desc_set, 0, nullptr);
+        if (!m_initialized) return;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_text.get());
+        if (m_desc_set != VK_NULL_HANDLE)
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout.get(), 0, 1, &m_desc_set, 0, nullptr);
     }
 
     auto RenderingOverlay::draw(VkCommandBuffer cmd, const TextBuffer& buffer, const VkRect2D& view) noexcept -> void
     {
-        if (!m_initialized)
-            return;
-        if (buffer.vertex_count() == 0)
-            return;
-        assert(cmd != VK_NULL_HANDLE);
+        if (!m_initialized || buffer.vertex_count() == 0) return;
 
-        PushConstants pc
-        {
-            .view_size_over_2 = { 
-                static_cast<float>(view.extent.width) * 0.5f, 
-                static_cast<float>(view.extent.height) * 0.5f 
-            },
-            .view_2_over_size = { 
-                2.0f / static_cast<float>(view.extent.width), 
-                2.0f / static_cast<float>(view.extent.height) 
-            },
-            .screen_pos = { static_cast<float>(view.offset.x), static_cast<float>(view.offset.y) },
+        PushConstants pc {
+            .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
+            .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
+            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
             .color = 0xffffffffu,
             .color_strength = 0.0f
         };
-
         vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
 
         VkBuffer vb = buffer.vertex_buffer();
@@ -401,33 +553,73 @@ namespace engi::vk
 
     auto RenderingOverlay::draw(VkCommandBuffer cmd, const TextBuffer& buffer, const VkRect2D& view, const go::vu4& color) noexcept -> void
     {
-        if (!m_initialized)
-            return;
-        if (buffer.vertex_count() == 0)
-            return;
-        assert(cmd != VK_NULL_HANDLE);
+        if (!m_initialized || buffer.vertex_count() == 0) return;
         
-        PushConstants pc
-        {
-            .view_size_over_2 = { 
-                static_cast<float>(view.extent.width) * 0.5f, 
-                static_cast<float>(view.extent.height) * 0.5f 
-            },
-            .view_2_over_size = { 
-                2.0f / static_cast<float>(view.extent.width), 
-                2.0f / static_cast<float>(view.extent.height) 
-            },
-            .screen_pos = { static_cast<float>(view.offset.x), static_cast<float>(view.offset.y) },
+        PushConstants pc {
+            .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
+            .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
+            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
             .color = go::packUnorm4x8(color),
             .color_strength = 1.0f
         };
-
         vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
 
         VkBuffer vb = buffer.vertex_buffer();
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &offset);
         vkCmdDraw(cmd, buffer.vertex_count(), 1, 0, 0);
+    }
+
+    auto RenderingOverlay::start_draw_2d(VkCommandBuffer cmd) noexcept -> void
+    {
+        if (!m_initialized) return;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_2d.get());
+    }
+
+    auto RenderingOverlay::draw(VkCommandBuffer cmd, const GeometryBuffer2D& buffer, const VkRect2D& view) noexcept -> void
+    {
+        if (!m_initialized || buffer.index_count() == 0) return;
+
+        PushConstants pc {
+            .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
+            .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
+            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
+            .color = 0xffffffffu,
+            .color_strength = 0.0f
+        };
+        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
+
+        VkBuffer vb = buffer.vertex_buffer();
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &offset);
+        vkCmdBindIndexBuffer(cmd, buffer.index_buffer(), 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmd, buffer.index_count(), 1, 0, 0, 0);
+    }
+
+    auto RenderingOverlay::start_draw_2d_wire(VkCommandBuffer cmd) noexcept -> void
+    {
+        if (!m_initialized) return;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_2d_wire.get());
+    }
+
+    auto RenderingOverlay::draw(VkCommandBuffer cmd, const GeometryBuffer2DWire& buffer, const VkRect2D& view) noexcept -> void
+    {
+        if (!m_initialized || buffer.index_count() == 0) return;
+
+        PushConstants pc {
+            .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
+            .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
+            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
+            .color = 0xffffffffu,
+            .color_strength = 0.0f
+        };
+        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
+
+        VkBuffer vb = buffer.vertex_buffer();
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &offset);
+        vkCmdBindIndexBuffer(cmd, buffer.index_buffer(), 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmd, buffer.index_count(), 1, 0, 0, 0);
     }
 }
 

@@ -1,0 +1,23 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout (location = 0) in vec2 pos;
+layout (location = 1) in uint col;
+
+layout (location = 0) out vec4 out_color;
+
+layout (push_constant) uniform Constants 
+{ 
+    vec2 view_size_over_2;
+    vec2 view_2_over_size;
+    vec2 screen_pos;
+    uint color;
+    float color_strength;
+} c;
+
+void main()
+{
+    vec2 p = c.screen_pos + pos; 
+    gl_Position = vec4(p * c.view_2_over_size - 1.0, 0.0, 1.0);
+    out_color = c.color_strength * unpackUnorm4x8(c.color) + (1.0 - c.color_strength) * unpackUnorm4x8(col);
+}
