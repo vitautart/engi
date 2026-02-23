@@ -256,7 +256,7 @@ namespace TestCube
             g_font_atlas = std::move(font_res.value());
 
             auto font_id = g_overlay.add_font(&g_font_atlas);
-            if (!g_overlay.init())
+            if (!g_overlay.init(false))
                 std::println("[WARNING] Failed to init rendering overlay");
             else
             {
@@ -397,9 +397,10 @@ namespace TestCube
 
         // Sync UI buffers (upload + barriers) before render pass
         VkRect2D full_rect = { .offset = {0, 0}, .extent = {800, 600} };
+        go::vf4 clear_color = {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f};
         g_ui.sync(cmd, full_rect);
 
-        engi::vk::draw_start(cmd, full_rect, {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f});
+        engi::vk::draw_start(cmd, full_rect, clear_color);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipeline.get());
         vkCmdBindIndexBuffer(cmd, g_index_buffer.buffer(), 0, VK_INDEX_TYPE_UINT16);
@@ -417,18 +418,21 @@ namespace TestCube
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb_dynamic, &offset);
         vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
 
-        g_overlay.start_draw_2d(cmd);
-        g_overlay.draw(cmd, g_geo_buffer, full_rect);
+        //g_overlay.start_draw_2d(cmd);
+        //g_overlay.draw(cmd, g_geo_buffer, full_rect);
 
-        g_overlay.start_draw_2d_wire(cmd);
-        g_overlay.draw(cmd, g_geo_wire_buffer, full_rect);
+        //g_overlay.start_draw_2d_wire(cmd);
+        //g_overlay.draw(cmd, g_geo_wire_buffer, full_rect);
 
-        g_overlay.start_text_draw(cmd);
-        g_overlay.draw(cmd, g_text_buffer, full_rect);
+        //g_overlay.start_text_draw(cmd);
+        //g_overlay.draw(cmd, g_text_buffer, full_rect);
 
-        // Draw UI system (inside the render pass)
+        engi::vk::draw_end(cmd);
+
+        engi::vk::draw_start(cmd, full_rect, clear_color, false, false, 
+            VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE,
+            VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
         g_ui.draw(cmd, g_overlay, full_rect);
-
         engi::vk::draw_end(cmd);
     }
 

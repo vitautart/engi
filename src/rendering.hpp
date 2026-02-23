@@ -80,6 +80,31 @@ namespace engi::vk
     auto cmd_start() -> VkCommandBuffer;
     auto draw_start(VkCommandBuffer cmd, go::vf4 srgba_bg) -> void;
     auto draw_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srgba_bg) -> void;
+    // More generic draw_start: control depth, multisampling and attachment ops
+    auto draw_start(
+        VkCommandBuffer cmd,
+        const VkRect2D& view,
+        go::vf4 srgba_bg,
+        bool enable_depth,
+        bool enable_msaa,
+        VkAttachmentLoadOp colorLoadOp,
+        VkAttachmentStoreOp colorStoreOp,
+        VkAttachmentLoadOp depthLoadOp,
+        VkAttachmentStoreOp depthStoreOp) -> void;
+
+    // Explicit-image-view draw_start: provide image views for color/depth/resolve
+    auto draw_start(
+        VkCommandBuffer cmd,
+        const VkRect2D& view,
+        go::vf4 srgba_bg,
+        VkImageView color_view,
+        VkImageView depth_view,
+        VkImageView resolve_view,
+        bool enable_msaa,
+        VkAttachmentLoadOp colorLoadOp,
+        VkAttachmentStoreOp colorStoreOp,
+        VkAttachmentLoadOp depthLoadOp,
+        VkAttachmentStoreOp depthStoreOp) -> void;
     auto view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void; // optional, will be set by draw_start
     auto draw_end(VkCommandBuffer cmd) -> void;
     auto cmd_end() -> void;

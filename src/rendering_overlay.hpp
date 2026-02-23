@@ -145,7 +145,7 @@ namespace engi::vk
         auto add_font(IFontAtlas* atlas) -> FontId;
 
         // Initializes pipeline, layout, sampler and descriptor set for all added fonts.
-        auto init() noexcept -> bool;
+        auto init(bool enable_msaa) noexcept -> bool;
 
         // Draws text buffer inside given viewport rectangle.
         auto start_text_draw(VkCommandBuffer cmd) noexcept -> void;

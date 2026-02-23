@@ -329,7 +329,7 @@ namespace engi::vk
         return { .ptr = atlas, .image_offset = offset };
     }
 
-    auto RenderingOverlay::init() noexcept -> bool
+    auto RenderingOverlay::init(bool enable_msaa) noexcept -> bool
     {
         if (m_initialized)
             return true;
@@ -377,7 +377,7 @@ namespace engi::vk
                 .fragment_shader_from_file("shaders/text_frag.spv")
                 .color_format(color_format())
                 .depth_format(depth_format())
-                .samples(sample_count())
+                .samples(enable_msaa ? sample_count() : VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
                 .add(binding)
                 .add(attrs[0]).add(attrs[1]).add(attrs[2]).add(attrs[3])
                 .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -415,7 +415,7 @@ namespace engi::vk
                 .fragment_shader_from_file("shaders/rect_frag.spv")
                 .color_format(color_format())
                 .depth_format(depth_format())
-                .samples(sample_count())
+                .samples(enable_msaa ? sample_count() : VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
                 .add(binding)
                 .add(attrs[0]).add(attrs[1]).add(attrs[2]).add(attrs[3])
                 .topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
@@ -450,7 +450,7 @@ namespace engi::vk
                 .fragment_shader_from_file("shaders/rect_wire_frag.spv")
                 .color_format(color_format())
                 .depth_format(depth_format())
-                .samples(sample_count())
+                .samples(enable_msaa ? sample_count() : VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
                 .add(binding)
                 .add(attrs[0]).add(attrs[1])
                 .topology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST)

@@ -1163,6 +1163,114 @@ auto engi::vk::draw_start(VkCommandBuffer cmd, const VkRect2D& view, go::vf4 srg
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &view);
 }
+
+// Generic draw_start: control depth, multisampling and load/store ops.
+auto engi::vk::draw_start(
+    VkCommandBuffer cmd,
+    const VkRect2D& view,
+    go::vf4 srgba_bg,
+    bool enable_depth,
+    bool enable_msaa,
+    VkAttachmentLoadOp colorLoadOp,
+    VkAttachmentStoreOp colorStoreOp,
+    VkAttachmentLoadOp depthLoadOp,
+    VkAttachmentStoreOp depthStoreOp) -> void
+{
+    VkImageView colorView = VK_NULL_HANDLE;
+    VkImageView resolveView = VK_NULL_HANDLE;
+    VkImageView depthView = VK_NULL_HANDLE;
+
+    if (enable_msaa)
+    {
+        colorView = ins.win.color_images[ins.win.image_id].view();
+        resolveView = ins.win.resolve_images[ins.win.image_id].view();
+    }
+    else
+    {
+        colorView = ins.win.resolve_images[ins.win.image_id].view();
+        resolveView = VK_NULL_HANDLE;
+    }
+
+    if (enable_depth)
+        depthView = ins.win.depth_images[ins.win.image_id].view();
+    else
+        depthView = VK_NULL_HANDLE;
+
+    draw_start(cmd, view, srgba_bg,
+               colorView, depthView, resolveView, enable_msaa,
+               colorLoadOp, colorStoreOp, depthLoadOp, depthStoreOp);
+}
+
+// Explicit image-view draw_start: use provided image views directly.
+auto engi::vk::draw_start(
+    VkCommandBuffer cmd,
+    const VkRect2D& view,
+    go::vf4 srgba_bg,
+    VkImageView color_view,
+    VkImageView depth_view,
+    VkImageView resolve_view,
+    bool enable_msaa,
+    VkAttachmentLoadOp colorLoadOp,
+    VkAttachmentStoreOp colorStoreOp,
+    VkAttachmentLoadOp depthLoadOp,
+    VkAttachmentStoreOp depthStoreOp) -> void
+{
+    VkViewport viewport = 
+    {
+        .x = (float)view.offset.x,
+        .y = (float)view.offset.y,
+        .width = (float)view.extent.width,
+        .height = (float)view.extent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+    };
+    auto lcolor = go::srgba_to_linear(srgba_bg);
+    VkRenderingAttachmentInfo colorAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = color_view,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = (enable_msaa && resolve_view != VK_NULL_HANDLE) ? VkResolveModeFlagBits::VK_RESOLVE_MODE_AVERAGE_BIT : VkResolveModeFlagBits::VK_RESOLVE_MODE_NONE,
+        .resolveImageView = (enable_msaa ? resolve_view : VK_NULL_HANDLE), 
+        .resolveImageLayout = (enable_msaa ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED),
+        .loadOp = colorLoadOp,
+        .storeOp = colorStoreOp,
+        .clearValue = { .color = {lcolor[0], lcolor[1], lcolor[2], lcolor[3]} }
+    };
+
+    VkRenderingAttachmentInfo depthAttachment = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = depth_view,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VkResolveModeFlagBits::VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE, 
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = depthLoadOp,
+        .storeOp = depthStoreOp,
+        .clearValue = { .depthStencil = {.depth = 0.0f, .stencil = 0} } // reverse-Z
+    };
+
+    VkRenderingInfo renderingInfo = 
+    {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderArea = view,
+        .layerCount = 1, 
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachment,
+        .pDepthAttachment = depth_view != VK_NULL_HANDLE ? &depthAttachment : nullptr, 
+        .pStencilAttachment = nullptr
+    };
+
+    vkCmdBeginRendering(cmd, &renderingInfo);
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &view);
+}
     
 auto engi::vk::view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void
 {
