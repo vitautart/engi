@@ -83,7 +83,7 @@ namespace engi::ui
         if (!visible) return;
         auto abs_pos = ctx.origin + position;
         auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
-        auto text_y = abs_pos[1] + (size[1] + font_h) * 0.5f; // baseline: center x-height inside element
+        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline: center x-height inside element
         ctx.text.add(text, {abs_pos[0], text_y}, color);
     }
 
@@ -129,9 +129,10 @@ namespace engi::ui
         ctx.geo.add_rect(abs_pos, size, col);
         ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
 
-        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
+        //auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
+        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_cap_height()) : 12.0f;
         auto text_x = abs_pos[0] + 6.0f;
-        auto text_y = abs_pos[1] + (size[1] + font_h) * 0.5f; // baseline centered using x-height
+        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline centered using x-height
         ctx.text.add(label, {text_x, text_y}, text_color);
     }
 
@@ -231,7 +232,7 @@ namespace engi::ui
         auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
         auto advance = ctx.font ? static_cast<float>(ctx.font->get_line_height()) : 10.0f;
         auto text_x = abs_pos[0] + 4.0f;
-        auto text_y = abs_pos[1] + (size[1] + font_h) * 0.5f; // baseline centered using x-height
+        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline centered using x-height
         ctx.text.add(text, {text_x, text_y}, text_color);
 
         if (m_focused)
@@ -356,7 +357,7 @@ namespace engi::ui
         auto advance = ctx.font ? static_cast<float>(ctx.font->get_line_height()) : 10.0f;
         auto text_x = abs_pos[0] + 4.0f;
         // baseline for first line: top padding + x-height so that glyphs sit within padding
-        auto text_y = abs_pos[1] + 4.0f + font_h;
+        auto text_y = std::floor(abs_pos[1] + 4.0f + font_h);
         ctx.text.add(text, {text_x, text_y}, text_color);
 
         if (m_focused)
@@ -489,7 +490,7 @@ namespace engi::ui
         {
             auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
             auto text_x = abs_pos[0] + box_sz[0] + 6.0f;
-            auto text_y = abs_pos[1] + (box_sz[1] + font_h) * 0.5f; // baseline centered using x-height
+            auto text_y = std::floor(abs_pos[1] + (box_sz[1] + font_h) * 0.5f); // baseline centered using x-height
             ctx.text.add(label, {text_x, text_y}, text_color);
         }
     }
@@ -559,13 +560,13 @@ namespace engi::ui
 
         if (selected >= 0 && selected < static_cast<int>(items.size()))
         {
-            auto text_y = abs_pos[1] + (size[1] + font_h) * 0.5f;
+            auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
             ctx.text.add(items[selected], {abs_pos[0] + 6.0f, text_y}, text_color);
         }
 
         // Draw arrow indicator
         auto arrow_x = abs_pos[0] + size[0] - 16.0f;
-        auto arrow_y = abs_pos[1] + (size[1] + font_h) * 0.5f;
+        auto arrow_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
         ctx.text.add(m_open ? L"\x25B2" : L"\x25BC", {arrow_x, arrow_y}, text_color);
 
         if (m_open)
@@ -577,7 +578,7 @@ namespace engi::ui
                 auto& col = (i == m_hovered_item) ? hover_color : bg_color;
                 ctx.geo.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, col);
                 ctx.wire.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, go::vu4{80, 80, 110, 255});
-                auto item_y = iy + (item_height + font_h) * 0.5f;
+                auto item_y = std::floor(iy + (item_height + font_h) * 0.5f);
                 ctx.text.add(items[i], go::vf2{abs_pos[0] + 6.0f, item_y}, text_color);
             }
         }
