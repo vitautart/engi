@@ -213,10 +213,15 @@ namespace engi::vk
         const go::u32 col = go::packUnorm4x8(color);
         const uint32_t first_vtx = static_cast<uint32_t>(m_vertices.size());
 
-        m_vertices.push_back({ {pos[0], pos[1]}, col });
-        m_vertices.push_back({ {pos[0] + size[0], pos[1]}, col });
-        m_vertices.push_back({ {pos[0] + size[0], pos[1] + size[1]}, col });
-        m_vertices.push_back({ {pos[0], pos[1] + size[1]}, col });
+        const go::f32 x0 = pos[0] + 0.5f;
+        const go::f32 y0 = pos[1] + 0.5f;
+        const go::f32 x1 = pos[0] + size[0] - 0.5f;
+        const go::f32 y1 = pos[1] + size[1] - 0.5f;
+
+        m_vertices.push_back({ {x0, y0}, col });
+        m_vertices.push_back({ {x1, y0}, col });
+        m_vertices.push_back({ {x1, y1}, col });
+        m_vertices.push_back({ {x0, y1}, col });
 
         m_indices.push_back(first_vtx + 0); m_indices.push_back(first_vtx + 1);
         m_indices.push_back(first_vtx + 1); m_indices.push_back(first_vtx + 2);

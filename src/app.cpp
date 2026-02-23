@@ -35,7 +35,7 @@ namespace
 // ===== CUBE TEST RENDERING (TEMPORARY) =====
 namespace TestCube
 {
-    constexpr bool ENABLE_UI_MSAA = true;
+    constexpr bool ENABLE_UI_MSAA = false;
     struct Vertex
     {
         go::vf3 pos;
