@@ -259,9 +259,13 @@ namespace engi::ui
         float spacing = 4.0f;
         bool scrollable = false;
         go::vf2 scroll_offset = {0.0f, 0.0f};
+        bool draw_background = false;
         go::vu4 bg_color = {0, 0, 0, 0};
+        bool draw_border = false;
+        go::vu4 border_color = {100, 100, 130, 255};
 
     private:
+        friend class UISystem;
         auto apply_layout() -> void;
         std::vector<std::unique_ptr<UIElement>> m_children;
     };
@@ -292,10 +296,21 @@ namespace engi::ui
         auto draw(VkCommandBuffer cmd, vk::RenderingOverlay& overlay, const VkRect2D& viewport) -> void;
 
     private:
+        struct PanelDrawBuffers
+        {
+            vk::GeometryBuffer2D geo;
+            vk::GeometryBuffer2DWire wire;
+            vk::TextBuffer text;
+            VkRect2D view = {};
+        };
+
+        auto panel_count(const UIPanel& panel) const -> size_t;
+        auto ensure_panel_buffers(size_t count) -> bool;
+        auto build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void;
+
         UIPanel m_root;
-        vk::GeometryBuffer2D m_geo;
-        vk::GeometryBuffer2DWire m_wire;
-        vk::TextBuffer m_text;
+        std::vector<PanelDrawBuffers> m_panel_buffers;
+        size_t m_used_panel_buffers = 0;
         vk::FontId m_font;
         go::vf2 m_mouse_pos = {0.0f, 0.0f};
         bool m_initialized = false;

@@ -539,7 +539,7 @@ namespace engi::vk
         PushConstants pc {
             .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
-            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
+            .screen_pos = { 0.0f, 0.0f },
             .color = 0xffffffffu,
             .color_strength = 0.0f
         };
@@ -558,7 +558,7 @@ namespace engi::vk
         PushConstants pc {
             .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
-            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
+            .screen_pos = { 0.0f, 0.0f },
             .color = go::packUnorm4x8(color),
             .color_strength = 1.0f
         };
@@ -583,7 +583,7 @@ namespace engi::vk
         PushConstants pc {
             .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
-            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
+            .screen_pos = { 0.0f, 0.0f },
             .color = 0xffffffffu,
             .color_strength = 0.0f
         };
@@ -609,7 +609,7 @@ namespace engi::vk
         PushConstants pc {
             .view_size_over_2 = { view.extent.width * 0.5f, view.extent.height * 0.5f },
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
-            .screen_pos = { (float)view.offset.x, (float)view.offset.y },
+            .screen_pos = { 0.0f, 0.0f },
             .color = 0xffffffffu,
             .color_strength = 0.0f
         };

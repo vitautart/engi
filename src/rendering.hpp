@@ -105,7 +105,7 @@ namespace engi::vk
         VkAttachmentStoreOp colorStoreOp,
         VkAttachmentLoadOp depthLoadOp,
         VkAttachmentStoreOp depthStoreOp) -> void;
-    auto view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void; // optional, will be set by draw_start
+    auto view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void;
     auto draw_end(VkCommandBuffer cmd) -> void;
     auto cmd_end() -> void;
     auto submit() -> bool;

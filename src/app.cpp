@@ -35,6 +35,7 @@ namespace
 // ===== CUBE TEST RENDERING (TEMPORARY) =====
 namespace TestCube
 {
+    constexpr bool ENABLE_UI_MSAA = true;
     struct Vertex
     {
         go::vf3 pos;
@@ -243,7 +244,7 @@ namespace TestCube
             cmd,
             std::filesystem::path("resources/fonts/iosevka-fixed-regular.ttf"),
             //16,
-            32,
+            24,
             512u,
             512u
         );
@@ -256,7 +257,7 @@ namespace TestCube
             g_font_atlas = std::move(font_res.value());
 
             auto font_id = g_overlay.add_font(&g_font_atlas);
-            if (!g_overlay.init(false))
+            if (!g_overlay.init(ENABLE_UI_MSAA))
                 std::println("[WARNING] Failed to init rendering overlay");
             else
             {
@@ -306,26 +307,26 @@ namespace TestCube
                     auto& root = g_ui.root();
                     root.layout = engi::ui::Layout::Vertical;
                     root.padding = 10.0f;
-                    root.spacing = 8.0f;
-                    root.bg_color = {20, 20, 35, 200};
+                    root.spacing = 6.0f;
+                    root.bg_color = {18, 18, 30, 200};
 
                     auto* title = root.add_new<engi::ui::UILabel>();
                     title->text = L"UI System Demo";
-                    title->color = {255, 220, 100, 255};
-                    title->size = {200.0f, 24.0f};
+                    title->color = {240, 200, 90, 255};
+                    title->size = {180.0f, 20.0f};
 
                     auto* btn_hello = root.add_new<engi::ui::UIButton>();
                     btn_hello->label = L"Say Hello";
-                    btn_hello->size = {150.0f, 32.0f};
+                    btn_hello->size = {120.0f, 24.0f};
                     btn_hello->on_click = [](){ std::println("[UI] Hello from button!"); };
 
                     g_counter_label = root.add_new<engi::ui::UILabel>();
                     g_counter_label->text = L"Clicks: 0";
-                    g_counter_label->size = {200.0f, 24.0f};
+                    g_counter_label->size = {160.0f, 20.0f};
 
                     auto* btn_count = root.add_new<engi::ui::UIButton>();
                     btn_count->label = L"Count Click";
-                    btn_count->size = {150.0f, 32.0f};
+                    btn_count->size = {120.0f, 24.0f};
                     btn_count->color_normal = {50, 80, 50, 255};
                     btn_count->color_hover = {70, 110, 70, 255};
                     btn_count->color_pressed = {30, 60, 30, 255};
@@ -336,9 +337,62 @@ namespace TestCube
                     };
 
                     auto* slider = root.add_new<engi::ui::UISlider>();
-                    slider->size = {200.0f, 24.0f};
+                    slider->size = {160.0f, 20.0f};
                     slider->value = 0.5f;
                     slider->on_change = [](float v){ std::println("[UI] Slider: {:.2f}", v); };
+
+                    // Add a big panel with border and background
+                    auto* big_panel = root.add_new<engi::ui::UIPanel>();
+                    big_panel->size = {620.0f, 320.0f};
+                    big_panel->draw_background = true;
+                    big_panel->bg_color = {25, 25, 40, 220};
+                    big_panel->draw_border = true;
+                    big_panel->border_color = {120, 120, 150, 255};
+                    big_panel->layout = engi::ui::Layout::Horizontal;
+                    big_panel->padding = 8.0f;
+                    big_panel->spacing = 8.0f;
+
+                    // First child panel
+                    auto* child1 = big_panel->add_new<engi::ui::UIPanel>();
+                    child1->size = {296.0f, 296.0f};
+                    child1->draw_background = true;
+                    child1->bg_color = {40, 40, 55, 220};
+                    child1->draw_border = true;
+                    child1->border_color = {100, 100, 130, 255};
+                    child1->layout = engi::ui::Layout::Vertical;
+                    child1->padding = 6.0f;
+                    child1->spacing = 6.0f;
+
+                    auto* c1_label = child1->add_new<engi::ui::UILabel>();
+                    c1_label->text = L"Panel A";
+                    c1_label->size = {140.0f, 18.0f};
+                    c1_label->color = {220,220,220,255};
+
+                    auto* c1_btn = child1->add_new<engi::ui::UIButton>();
+                    c1_btn->label = L"A Button";
+                    c1_btn->size = {100.0f, 20.0f};
+                    c1_btn->on_click = [](){ std::println("[UI] A Button clicked"); };
+
+                    // Second child panel
+                    auto* child2 = big_panel->add_new<engi::ui::UIPanel>();
+                    child2->size = {296.0f, 296.0f};
+                    child2->draw_background = true;
+                    child2->bg_color = {40, 40, 55, 220};
+                    child2->draw_border = true;
+                    child2->border_color = {100, 100, 130, 255};
+                    child2->layout = engi::ui::Layout::Vertical;
+                    child2->padding = 6.0f;
+                    child2->spacing = 6.0f;
+
+                    auto* c2_label = child2->add_new<engi::ui::UILabel>();
+                    c2_label->text = L"Panel B";
+                    c2_label->size = {140.0f, 18.0f};
+                    c2_label->color = {220,220,220,255};
+
+                    auto* c2_btn = child2->add_new<engi::ui::UIButton>();
+                    c2_btn->label = L"B Button";
+                    c2_btn->size = {100.0f, 20.0f};
+                    c2_btn->on_click = [](){ std::println("[UI] B Button clicked"); };
 
                     std::println("[INFO] UI system initialized");
                 }
@@ -429,7 +483,7 @@ namespace TestCube
 
         engi::vk::draw_end(cmd);
 
-        engi::vk::draw_start(cmd, full_rect, clear_color, false, false, 
+        engi::vk::draw_start(cmd, full_rect, clear_color, false, ENABLE_UI_MSAA, 
             VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE,
             VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE);
         g_ui.draw(cmd, g_overlay, full_rect);

@@ -34,6 +34,36 @@ namespace engi::ui
         return {{x0, y0}, {w, h}};
     }
 
+    static auto to_rect(const go::vf2& pos, const go::vf2& size) -> VkRect2D
+    {
+        auto out = VkRect2D{};
+        out.offset.x = static_cast<int32_t>(std::max(0.0f, pos[0]));
+        out.offset.y = static_cast<int32_t>(std::max(0.0f, pos[1]));
+        out.extent.width = static_cast<uint32_t>(std::max(0.0f, size[0]));
+        out.extent.height = static_cast<uint32_t>(std::max(0.0f, size[1]));
+        return out;
+    }
+
+    static auto rect_intersection(const VkRect2D& a, const VkRect2D& b) -> VkRect2D
+    {
+        auto ax1 = a.offset.x + static_cast<int32_t>(a.extent.width);
+        auto ay1 = a.offset.y + static_cast<int32_t>(a.extent.height);
+        auto bx1 = b.offset.x + static_cast<int32_t>(b.extent.width);
+        auto by1 = b.offset.y + static_cast<int32_t>(b.extent.height);
+
+        auto x0 = std::max(a.offset.x, b.offset.x);
+        auto y0 = std::max(a.offset.y, b.offset.y);
+        auto x1 = std::min(ax1, bx1);
+        auto y1 = std::min(ay1, by1);
+
+        auto out = VkRect2D{};
+        out.offset.x = x0;
+        out.offset.y = y0;
+        out.extent.width = static_cast<uint32_t>(std::max(0, x1 - x0));
+        out.extent.height = static_cast<uint32_t>(std::max(0, y1 - y0));
+        return out;
+    }
+
     // ===== UIElement =====
 
     UIElement::UIElement()
@@ -590,6 +620,8 @@ namespace engi::ui
     {
         if (!visible || !enabled) return false;
 
+        apply_layout();
+
         auto local = go::vf2{ev.mouse_pos[0] - position[0], ev.mouse_pos[1] - position[1]};
         auto inside = point_in_rect(local, {0, 0}, size);
 
@@ -646,9 +678,14 @@ namespace engi::ui
             return;
 
         // Draw background
-        if (bg_color[3] > 0)
+        if (draw_background || bg_color[3] > 0)
         {
             ctx.geo.add_rect(abs_pos, size, bg_color);
+        }
+
+        if (draw_border && border_color[3] > 0)
+        {
+            ctx.wire.add_rect(abs_pos, size, border_color);
         }
 
         // Set clip for children
@@ -671,35 +708,130 @@ namespace engi::ui
         ctx.clip_size = parent_clip_size;
     }
 
+    auto UISystem::panel_count(const UIPanel& panel) const -> size_t
+    {
+        auto count = size_t{1};
+        for (const auto& child : panel.children())
+        {
+            if (!child->visible) continue;
+            if (auto* child_panel = dynamic_cast<const UIPanel*>(child.get()))
+            {
+                count += panel_count(*child_panel);
+            }
+        }
+        return count;
+    }
+
+    auto UISystem::ensure_panel_buffers(size_t count) -> bool
+    {
+        if (m_panel_buffers.size() >= count)
+        {
+            return true;
+        }
+
+        while (m_panel_buffers.size() < count)
+        {
+            auto geo_res = vk::GeometryBuffer2D::create();
+            if (!geo_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel GeometryBuffer2D");
+                return false;
+            }
+
+            auto wire_res = vk::GeometryBuffer2DWire::create();
+            if (!wire_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel GeometryBuffer2DWire");
+                return false;
+            }
+
+            auto text_res = vk::TextBuffer::create(m_font);
+            if (!text_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel TextBuffer");
+                return false;
+            }
+
+            m_panel_buffers.push_back(
+                PanelDrawBuffers
+                {
+                    .geo = std::move(geo_res.value()),
+                    .wire = std::move(wire_res.value()),
+                    .text = std::move(text_res.value())
+                }
+            );
+        }
+
+        return true;
+    }
+
+    auto UISystem::build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void
+    {
+        panel.apply_layout();
+
+        auto panel_rect = to_rect(panel_abs_pos, panel.size);
+        auto panel_clip = rect_intersection(parent_clip, panel_rect);
+
+        auto& panel_buf = m_panel_buffers[panel_id++];
+        panel_buf.view = panel_clip;
+        panel_buf.geo.clear();
+        panel_buf.wire.clear();
+        panel_buf.text.clear();
+
+        if (panel_clip.extent.width == 0 || panel_clip.extent.height == 0)
+        {
+            return;
+        }
+
+        auto clip_offset = go::vf2{static_cast<float>(panel_clip.offset.x), static_cast<float>(panel_clip.offset.y)};
+        auto child_origin = panel_abs_pos + panel.scroll_offset;
+
+        DrawContext panel_ctx
+        {
+            .geo = panel_buf.geo,
+            .wire = panel_buf.wire,
+            .text = panel_buf.text,
+            .font = m_font.ptr,
+            .origin = child_origin - clip_offset,
+            .clip_pos = clip_offset,
+            .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
+        };
+
+        if (panel.draw_background || panel.bg_color[3] > 0)
+        {
+            panel_buf.geo.add_rect(panel_abs_pos - clip_offset, panel.size, panel.bg_color);
+        }
+
+        if (panel.draw_border && panel.border_color[3] > 0)
+        {
+            panel_buf.wire.add_rect(panel_abs_pos - clip_offset, panel.size, panel.border_color);
+        }
+
+        for (auto& child : panel.children())
+        {
+            if (!child->visible) continue;
+
+            if (auto* child_panel = dynamic_cast<UIPanel*>(child.get()))
+            {
+                auto child_panel_abs = child_origin + child_panel->position;
+                build_panel_buffers(*child_panel, child_panel_abs, panel_clip, panel_id);
+            }
+            else
+            {
+                child->draw(panel_ctx);
+            }
+        }
+    }
+
     // ===== UISystem =====
 
     auto UISystem::init(vk::FontId font) -> bool
     {
-        auto geo_res = vk::GeometryBuffer2D::create();
-        if (!geo_res)
-        {
-            std::println("[ERROR] UISystem: failed to create GeometryBuffer2D");
-            return false;
-        }
-        m_geo = std::move(geo_res.value());
-
-        auto wire_res = vk::GeometryBuffer2DWire::create();
-        if (!wire_res)
-        {
-            std::println("[ERROR] UISystem: failed to create GeometryBuffer2DWire");
-            return false;
-        }
-        m_wire = std::move(wire_res.value());
-
-        auto text_res = vk::TextBuffer::create(font);
-        if (!text_res)
-        {
-            std::println("[ERROR] UISystem: failed to create TextBuffer");
-            return false;
-        }
-        m_text = std::move(text_res.value());
-
         m_font = font;
+        if (!ensure_panel_buffers(1))
+        {
+            return false;
+        }
         m_initialized = true;
         return true;
     }
@@ -769,47 +901,43 @@ namespace engi::ui
         m_root.position = {static_cast<float>(viewport.offset.x), static_cast<float>(viewport.offset.y)};
         m_root.size = {static_cast<float>(viewport.extent.width), static_cast<float>(viewport.extent.height)};
 
-        m_geo.clear();
-        m_wire.clear();
-        m_text.clear();
-
-        DrawContext ctx
+        auto needed_panel_buffers = panel_count(m_root);
+        if (!ensure_panel_buffers(needed_panel_buffers))
         {
-            .geo = m_geo,
-            .wire = m_wire,
-            .text = m_text,
-            .font = m_font.ptr,
-            .origin = {0.0f, 0.0f},
-            .clip_pos = {static_cast<float>(viewport.offset.x), static_cast<float>(viewport.offset.y)},
-            .clip_size = {static_cast<float>(viewport.extent.width), static_cast<float>(viewport.extent.height)}
-        };
-
-        m_root.draw(ctx);
-
-        // Upload buffers and synchronize
-        if (m_geo.index_count() > 0)
-        {
-            if (auto r = m_geo.upload(cmd); r)
-            {
-                vk::add_vertex_buffer_write_barrier(m_geo.vertex_buffer());
-                vk::add_index_buffer_write_barrier(m_geo.index_buffer());
-            }
+            return;
         }
 
-        if (m_wire.index_count() > 0)
-        {
-            if (auto r = m_wire.upload(cmd); r)
-            {
-                vk::add_vertex_buffer_write_barrier(m_wire.vertex_buffer());
-                vk::add_index_buffer_write_barrier(m_wire.index_buffer());
-            }
-        }
+        m_used_panel_buffers = 0;
+        build_panel_buffers(m_root, m_root.position, viewport, m_used_panel_buffers);
 
-        if (m_text.vertex_count() > 0)
+        for (size_t i = 0; i < m_used_panel_buffers; i++)
         {
-            if (auto r = m_text.upload(cmd); r)
+            auto& panel_buf = m_panel_buffers[i];
+
+            if (panel_buf.geo.index_count() > 0)
             {
-                vk::add_vertex_buffer_write_barrier(m_text.vertex_buffer());
+                if (auto r = panel_buf.geo.upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(panel_buf.geo.vertex_buffer());
+                    vk::add_index_buffer_write_barrier(panel_buf.geo.index_buffer());
+                }
+            }
+
+            if (panel_buf.wire.index_count() > 0)
+            {
+                if (auto r = panel_buf.wire.upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(panel_buf.wire.vertex_buffer());
+                    vk::add_index_buffer_write_barrier(panel_buf.wire.index_buffer());
+                }
+            }
+
+            if (panel_buf.text.vertex_count() > 0)
+            {
+                if (auto r = panel_buf.text.upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(panel_buf.text.vertex_buffer());
+                }
             }
         }
 
@@ -820,13 +948,23 @@ namespace engi::ui
     {
         if (!m_initialized) return;
 
-        overlay.start_draw_2d(cmd);
-        overlay.draw(cmd, m_geo, viewport);
+        for (size_t i = 0; i < m_used_panel_buffers; i++)
+        {
+            auto& panel_buf = m_panel_buffers[i];
+            if (panel_buf.view.extent.width == 0 || panel_buf.view.extent.height == 0) continue;
 
-        overlay.start_draw_2d_wire(cmd);
-        overlay.draw(cmd, m_wire, viewport);
+            vk::view_set(cmd, panel_buf.view);
 
-        overlay.start_text_draw(cmd);
-        overlay.draw(cmd, m_text, viewport);
+            overlay.start_draw_2d(cmd);
+            overlay.draw(cmd, panel_buf.geo, panel_buf.view);
+
+            overlay.start_draw_2d_wire(cmd);
+            overlay.draw(cmd, panel_buf.wire, panel_buf.view);
+
+            overlay.start_text_draw(cmd);
+            overlay.draw(cmd, panel_buf.text, panel_buf.view);
+        }
+
+        vk::view_set(cmd, viewport);
     }
 }
