@@ -17,7 +17,7 @@ namespace engi::vk
     struct FontId
     {
         const IFontAtlas* ptr = nullptr;
-        size_t image_offset = 0;
+        uint32_t font_index = 0;
     };
 
     struct CharVertex
@@ -62,6 +62,7 @@ namespace engi::vk
 
         auto vertex_buffer() const noexcept -> VkBuffer;
         auto vertex_count() const noexcept -> uint32_t;
+        auto font_index() const noexcept -> uint32_t;
 
     private:
         std::vector<CharVertex> m_vertices;
@@ -167,6 +168,7 @@ namespace engi::vk
             go::vf2 screen_pos;
             uint32_t color;
             float color_strength;
+            uint32_t font_id;
         };
 
         auto destroy() noexcept -> void;

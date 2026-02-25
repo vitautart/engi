@@ -17,6 +17,7 @@ layout (push_constant) uniform Constants
     vec2 screen_pos;
     uint color;
     float color_strength; // 0..1.0
+    uint font_id;
 } c;
 
 void main()

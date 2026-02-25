@@ -68,7 +68,7 @@ namespace engi::vk
             const go::f32 u1 = static_cast<go::f32>(glyph->u1);
             const go::f32 v1 = static_cast<go::f32>(glyph->v1);
 
-            const go::u32 image_id = static_cast<go::u32>(glyph->image_id) + static_cast<go::u32>(m_font_id.image_offset);
+            const go::u32 image_id = static_cast<go::u32>(glyph->image_id);
 
             // Two triangles (non-indexed)
             CharVertex vtx[6] =
@@ -113,6 +113,11 @@ namespace engi::vk
     auto TextBuffer::vertex_count() const noexcept -> uint32_t
     {
         return m_vertex_count;
+    }
+
+    auto TextBuffer::font_index() const noexcept -> uint32_t
+    {
+        return m_font_id.font_index;
     }
 
     // ===== GeometryBuffer2D =====
@@ -325,13 +330,9 @@ namespace engi::vk
 
     auto RenderingOverlay::add_font(IFontAtlas* atlas) -> FontId
     {
-        size_t offset = 0;
-        for (auto* f : m_fonts)
-        {
-            offset += f->image_count();
-        }
+        const auto font_index = static_cast<uint32_t>(m_fonts.size());
         m_fonts.push_back(atlas);
-        return { .ptr = atlas, .image_offset = offset };
+        return { .ptr = atlas, .font_index = font_index };
     }
 
     auto RenderingOverlay::init(bool enable_msaa) noexcept -> bool
@@ -339,19 +340,15 @@ namespace engi::vk
         if (m_initialized)
             return true;
 
-        size_t total_image_count = 0;
-        for (auto* f : m_fonts)
-        {
-            total_image_count += f->image_count();
-        }
+        const auto font_count = static_cast<uint32_t>(m_fonts.size());
 
         auto dev = device();
 
         // Layout: set 0 - combined image sampler, plus push constants for viewport params
         auto layout_res = LayoutBuilder()
             .set(false)
-            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, static_cast<uint32_t>(total_image_count))
-            .push_const(0, sizeof(PushConstants), VK_SHADER_STAGE_VERTEX_BIT)
+            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, font_count > 0 ? font_count : 1)
+            .push_const(0, sizeof(PushConstants), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
             .build();
 
         if (!layout_res)
@@ -492,9 +489,9 @@ namespace engi::vk
         }
 
         // Descriptor pool and set
-        if (total_image_count > 0)
+        if (font_count > 0)
         {
-            VkDescriptorPoolSize pool_size { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(total_image_count) };
+            VkDescriptorPoolSize pool_size { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, font_count };
             VkDescriptorPoolCreateInfo pool_info { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, nullptr, 0, 1, 1, &pool_size };
 
             if (vkCreateDescriptorPool(dev, &pool_info, nullptr, &m_desc_pool) != VK_SUCCESS)
@@ -515,10 +512,7 @@ namespace engi::vk
             std::vector<VkDescriptorImageInfo> image_infos;
             for (auto* atlas : m_fonts)
             {
-                for (size_t i = 0; i < atlas->image_count(); ++i)
-                {
-                    image_infos.push_back({ m_font_sampler, atlas->image_view(i), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
-                }
+                image_infos.push_back({ m_font_sampler, atlas->image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
             }
 
             VkWriteDescriptorSet write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, m_desc_set, 0, 0, static_cast<uint32_t>(image_infos.size()), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, image_infos.data() };
@@ -546,9 +540,10 @@ namespace engi::vk
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
             .screen_pos = { 0.0f, 0.0f },
             .color = 0xffffffffu,
-            .color_strength = 0.0f
+            .color_strength = 0.0f,
+            .font_id = buffer.font_index()
         };
-        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
+        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
 
         VkBuffer vb = buffer.vertex_buffer();
         VkDeviceSize offset = 0;
@@ -565,9 +560,10 @@ namespace engi::vk
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
             .screen_pos = { 0.0f, 0.0f },
             .color = go::packUnorm4x8(color),
-            .color_strength = 1.0f
+            .color_strength = 1.0f,
+            .font_id = buffer.font_index()
         };
-        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
+        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
 
         VkBuffer vb = buffer.vertex_buffer();
         VkDeviceSize offset = 0;
@@ -590,9 +586,10 @@ namespace engi::vk
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
             .screen_pos = { 0.0f, 0.0f },
             .color = 0xffffffffu,
-            .color_strength = 0.0f
+            .color_strength = 0.0f,
+            .font_id = 0
         };
-        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
+        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
 
         VkBuffer vb = buffer.vertex_buffer();
         VkDeviceSize offset = 0;
@@ -616,9 +613,10 @@ namespace engi::vk
             .view_2_over_size = { 2.0f / view.extent.width, 2.0f / view.extent.height },
             .screen_pos = { 0.0f, 0.0f },
             .color = 0xffffffffu,
-            .color_strength = 0.0f
+            .color_strength = 0.0f,
+            .font_id = 0
         };
-        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &pc);
+        vkCmdPushConstants(cmd, m_layout.get(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
 
         VkBuffer vb = buffer.vertex_buffer();
         VkDeviceSize offset = 0;

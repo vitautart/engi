@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <expected>
 #include <map>
-#include <vector>
 #include <span>
 #include <filesystem>
 #include <string_view>
@@ -19,7 +18,7 @@ namespace engi::vk
         int16_t x0, y0, x1, y1;  // pixel coords in bitmap
         int16_t u0, v0, u1, v1;  // texcoord in bitmap
         int16_t advance;
-        int16_t image_id;
+        int16_t image_id;        // array layer in atlas image
     };
     struct CharRange
     {
@@ -39,11 +38,8 @@ namespace engi::vk
         virtual auto get_line_height() const noexcept -> int = 0;
         virtual auto image_view() const noexcept -> VkImageView = 0;
         virtual auto image() const noexcept -> VkImage = 0;
-        // number of images in atlas
-        virtual auto image_count() const noexcept -> size_t = 0;
-        // accessors for individual images (index < image_count())
-        virtual auto image_view(size_t idx) const noexcept -> VkImageView = 0;
-        virtual auto image(size_t idx) const noexcept -> VkImage = 0;
+        // number of array layers in atlas image
+        virtual auto layer_count() const noexcept -> uint32_t = 0;
     };
 
     class FontMonoAtlas : public IFontAtlas
@@ -75,11 +71,9 @@ namespace engi::vk
         ) -> std::expected<FontMonoAtlas, VkResult>;
 
         // IFontAtlas interface
-        auto image_view() const noexcept -> VkImageView override { return m_atlases.empty() ? VK_NULL_HANDLE : m_atlases[0].view(); }
-        auto image() const noexcept -> VkImage override { return m_atlases.empty() ? VK_NULL_HANDLE : m_atlases[0].image(); }
-        auto image_count() const noexcept -> size_t override { return m_atlases.size(); }
-        auto image_view(size_t idx) const noexcept -> VkImageView override { return m_atlases[idx].view(); }
-        auto image(size_t idx) const noexcept -> VkImage override { return m_atlases[idx].image(); }
+        auto image_view() const noexcept -> VkImageView override { return m_atlas.view(); }
+        auto image() const noexcept -> VkImage override { return m_atlas.image(); }
+        auto layer_count() const noexcept -> uint32_t override { return m_layer_count; }
         auto get_line_height() const noexcept -> int override { return m_line_height; }
         auto get_glyph(int codepoint) const noexcept -> const Glyph* override;
         auto calculate_line_width(std::wstring_view text) const -> uint32_t override;
@@ -91,7 +85,8 @@ namespace engi::vk
         auto get_advance() const noexcept -> int { return m_advance; }
 
     private:
-        std::vector<Image> m_atlases;
+        Image m_atlas;
+        uint32_t m_layer_count = 0;
         int m_line_height = 0;
         int m_advance = 0; // common advance for mono font
         int m_cap_height = 0;
