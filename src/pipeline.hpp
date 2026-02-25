@@ -4,6 +4,7 @@
 #include <expected>
 #include <vector>
 #include <string>
+#include <cstdint>
 #include <vulkan/vulkan_core.h>
 
 namespace engi::vk
@@ -40,6 +41,7 @@ public:
     // File-based shader creation
     auto vertex_shader_from_file(const std::string& path) -> PipelineBuilder&;
     auto fragment_shader_from_file(const std::string& path) -> PipelineBuilder&;
+    auto fragment_specialization_u32(uint32_t constant_id, uint32_t value) -> PipelineBuilder&;
 
     // Render target configuration
     auto color_format(VkFormat format) -> PipelineBuilder&;
@@ -82,6 +84,10 @@ private:
     VkFormat m_color_format = VK_FORMAT_UNDEFINED;
     VkFormat m_depth_format = VK_FORMAT_UNDEFINED;
     VkSampleCountFlagBits m_samples = VK_SAMPLE_COUNT_1_BIT;
+
+    // Specialization constants
+    std::vector<VkSpecializationMapEntry> m_fragment_spec_entries;
+    std::vector<uint8_t> m_fragment_spec_data;
     
     // Input assembly
     VkPrimitiveTopology m_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

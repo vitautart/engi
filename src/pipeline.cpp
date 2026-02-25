@@ -4,6 +4,7 @@
 #include <rendercommon.hpp>
 
 #include <array>
+#include <cstring>
 #include <fstream>
 #include <print>
 #include <string>
@@ -58,6 +59,21 @@ auto PipelineBuilder::fragment_shader_from_file(const std::string& path) -> Pipe
         auto result = vkCreateShaderModule(vk::device(), &info, nullptr, &m_fragment_shader);
         VK_CHECK_PRINT(result, "[ERROR] Fragment shader module creation failed: {}");
     }
+    return *this;
+}
+
+auto PipelineBuilder::fragment_specialization_u32(uint32_t constant_id, uint32_t value) -> PipelineBuilder&
+{
+    const auto offset = static_cast<uint32_t>(m_fragment_spec_data.size());
+    m_fragment_spec_entries.push_back(VkSpecializationMapEntry
+    {
+        .constantID = constant_id,
+        .offset = offset,
+        .size = sizeof(uint32_t)
+    });
+
+    m_fragment_spec_data.resize(offset + sizeof(uint32_t));
+    std::memcpy(m_fragment_spec_data.data() + offset, &value, sizeof(uint32_t));
     return *this;
 }
 
@@ -243,6 +259,14 @@ auto PipelineBuilder::build(VkPipelineLayout layout) -> std::expected<Pipeline, 
     if (m_blend_attachments.empty())
         no_blending();
     
+    VkSpecializationInfo fragment_specialization_info
+    {
+        .mapEntryCount = static_cast<uint32_t>(m_fragment_spec_entries.size()),
+        .pMapEntries = m_fragment_spec_entries.data(),
+        .dataSize = m_fragment_spec_data.size(),
+        .pData = m_fragment_spec_data.data()
+    };
+
     // Shader stages
     std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
     
@@ -270,7 +294,7 @@ auto PipelineBuilder::build(VkPipelineLayout layout) -> std::expected<Pipeline, 
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
             .module = m_fragment_shader,
             .pName = "main",
-            .pSpecializationInfo = nullptr
+            .pSpecializationInfo = m_fragment_spec_entries.empty() ? nullptr : &fragment_specialization_info
         });
     }
     

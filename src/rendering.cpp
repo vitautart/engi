@@ -394,19 +394,21 @@ static auto create_device_and_queues() -> bool
 
     auto queue_infos = create_queue_infos({ ins.gfx_queue, ins.present_queue });
 
-    VkPhysicalDeviceVulkan12Features vulkan12_features =
+    // For GL_EXT_nonuniform_qualifier extension in shader
+    /*VkPhysicalDeviceVulkan12Features vulkan12_features =
     {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext = nullptr,
         .descriptorIndexing = VK_TRUE,
         .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
         .runtimeDescriptorArray = VK_TRUE,
-    };
+    };*/
 
     VkPhysicalDeviceSynchronization2Features synchro2 =
     {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES,
-        .pNext = &vulkan12_features,
+        //.pNext = &vulkan12_features,
+        .pNext = nullptr,
         .synchronization2 = true
     };
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature = 

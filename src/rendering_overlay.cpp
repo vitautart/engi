@@ -341,13 +341,14 @@ namespace engi::vk
             return true;
 
         const auto font_count = static_cast<uint32_t>(m_fonts.size());
+        const auto font_binding_count = font_count > 0 ? font_count : 1;
 
         auto dev = device();
 
         // Layout: set 0 - combined image sampler, plus push constants for viewport params
         auto layout_res = LayoutBuilder()
             .set(false)
-            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, font_count > 0 ? font_count : 1)
+            .add(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, font_binding_count)
             .push_const(0, sizeof(PushConstants), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
             .build();
 
@@ -377,6 +378,7 @@ namespace engi::vk
             auto pipe_res = PipelineBuilder()
                 .vertex_shader_from_file("shaders/text_vert.spv")
                 .fragment_shader_from_file("shaders/text_frag.spv")
+                .fragment_specialization_u32(0, font_binding_count)
                 .color_format(color_format())
                 .depth_format(depth_format())
                 .samples(enable_msaa ? sample_count() : VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT)
@@ -479,7 +481,7 @@ namespace engi::vk
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            .unnormalizedCoordinates = VK_TRUE
+            .unnormalizedCoordinates = VK_FALSE
         };
 
         if (vkCreateSampler(dev, &sampler_info, nullptr, &m_font_sampler) != VK_SUCCESS)
