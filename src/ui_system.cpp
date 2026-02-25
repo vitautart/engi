@@ -129,10 +129,10 @@ namespace engi::ui
         ctx.geo.add_rect(abs_pos, size, col);
         ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
 
-        //auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
         auto font_h = ctx.font ? static_cast<float>(ctx.font->get_cap_height()) : 12.0f;
-        auto text_x = abs_pos[0] + 6.0f;
-        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline centered using x-height
+        auto text_w = ctx.font ? static_cast<float>(ctx.font->calculate_line_width(label)) : 0.0f;
+        auto text_x = std::floor(abs_pos[0] + (size[0] - text_w) * 0.5f);
+        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
         ctx.text.add(label, {text_x, text_y}, text_color);
     }
 
