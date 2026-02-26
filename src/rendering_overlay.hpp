@@ -23,7 +23,7 @@ namespace engi::vk
     struct CharVertex
     {
         go::vf2 pos;
-        go::vf2 uv;   // unnormalized atlas coordinates (pixels)
+        go::vf2 uv;   // normalized atlas coordinates
         go::u32 col;  // packed sRGBA (unorm4x8)
         go::u32 image;
     };

@@ -14,34 +14,24 @@
 #include <stb/stb_truetype.h>
 
 template <typename Func>
-int stbtt_BakeFontBitmap(unsigned char* data, int offset,
-                         float pixel_height,
+int stbtt_BakeFontBitmap(stbtt_fontinfo& font,
+                         float scale,
                          unsigned char* pixels, int pw, int ph,
                          int first_char, int num_chars,
                          const Func& fetchGlyphInfo)
 {
-    float scale;
     int x, y, bottom_y, i;
-    stbtt_fontinfo f;
-    f.userdata = nullptr;
-    if (!stbtt_InitFont(&f, data, offset))
-    {
-        std::println("[ERROR] Font can't be initialized.");
-        return -1;
-    }
     STBTT_memset(pixels, 0, pw * ph);
     x = y = 1;
     bottom_y = 1;
-
-    scale = stbtt_ScaleForPixelHeight(&f, pixel_height);
 
     for (i = 0; i < num_chars; ++i)
     {
         int codepoint = first_char + i;
         int advance, lsb, x0, y0, x1, y1, gw, gh;
-        int g = stbtt_FindGlyphIndex(&f, codepoint);
-        stbtt_GetGlyphHMetrics(&f, g, &advance, &lsb);
-        stbtt_GetGlyphBitmapBox(&f, g, scale, scale, &x0, &y0, &x1, &y1);
+        int g = stbtt_FindGlyphIndex(&font, codepoint);
+        stbtt_GetGlyphHMetrics(&font, g, &advance, &lsb);
+        stbtt_GetGlyphBitmapBox(&font, g, scale, scale, &x0, &y0, &x1, &y1);
         gw = x1 - x0;
         gh = y1 - y0;
         if (x + gw + 1 >= pw)
@@ -50,7 +40,7 @@ int stbtt_BakeFontBitmap(unsigned char* data, int offset,
             return -i;
         STBTT_assert(x + gw < pw);
         STBTT_assert(y + gh < ph);
-        stbtt_MakeGlyphBitmap(&f, pixels + x + y * pw, gw, gh, pw, scale, scale, g);
+        stbtt_MakeGlyphBitmap(&font, pixels + x + y * pw, gw, gh, pw, scale, scale, g);
         fetchGlyphInfo(codepoint, x0, y0, x1, y1, x, y, x + gw, y + gh, static_cast<int>(scale * advance));
         x = x + gw + 1;
         if (y + gh + 1 > bottom_y)
@@ -122,10 +112,27 @@ namespace engi::vk
             ranges_to_use.assign(char_ranges.begin(), char_ranges.end());
         }
 
-        int atlas_index = 0;
-        const VkDeviceSize layer_size = static_cast<VkDeviceSize>(bitmap_width) * static_cast<VkDeviceSize>(bitmap_height);
-        std::vector<std::vector<unsigned char>> atlas_layers;
+        const int font_offset = stbtt_GetFontOffsetForIndex(font_data.data(), 0);
+        if (font_offset < 0)
+        {
+            std::println("[ERROR] Invalid font data.");
+            return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+        }
 
+        stbtt_fontinfo font_info;
+        font_info.userdata = nullptr;
+        if (!stbtt_InitFont(&font_info, font_data.data(), font_offset))
+        {
+            std::println("[ERROR] Font can't be initialized.");
+            return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+        }
+        const float font_scale = stbtt_ScaleForPixelHeight(&font_info, static_cast<float>(line_height));
+
+        const VkDeviceSize layer_size = static_cast<VkDeviceSize>(bitmap_width) * static_cast<VkDeviceSize>(bitmap_height);
+        int layer_count = 0;
+        std::vector<unsigned char> scratch_layer(static_cast<size_t>(layer_size));
+
+        // Pass 1: count pages
         for (const auto& range : ranges_to_use)
         {
             int first_char = range.first_char;
@@ -133,37 +140,17 @@ namespace engi::vk
 
             while (remaining > 0)
             {
-                atlas_layers.emplace_back(static_cast<size_t>(layer_size), 0u);
-
-                // fetch glyph info writes glyphs into glyph_map and stamps the current atlas_index
-                auto fetch_glyph_info = [&out, &atlas_index](int codepoint, int x0, int y0, int x1, int y1, int u0, int v0, int u1, int v1, int advance)
-                {
-                    out.m_glyph_map.emplace(codepoint, Glyph{
-                        .x0 = static_cast<int16_t>(x0),
-                        .y0 = static_cast<int16_t>(y0),
-                        .x1 = static_cast<int16_t>(x1),
-                        .y1 = static_cast<int16_t>(y1),
-                        .u0 = static_cast<int16_t>(u0),
-                        .v0 = static_cast<int16_t>(v0),
-                        .u1 = static_cast<int16_t>(u1),
-                        .v1 = static_cast<int16_t>(v1),
-                        .advance = static_cast<int16_t>(advance),
-                        .image_id = static_cast<int16_t>(atlas_index)
-                    });
-
-                    out.m_advance = advance;
-                };
-
                 int res = stbtt_BakeFontBitmap(
-                    font_data.data(),
-                    stbtt_GetFontOffsetForIndex(font_data.data(), 0),
-                    static_cast<float>(line_height),
-                    atlas_layers.back().data(),
+                    font_info,
+                    font_scale,
+                    scratch_layer.data(),
                     static_cast<int>(bitmap_width),
                     static_cast<int>(bitmap_height),
                     first_char,
                     remaining,
-                    fetch_glyph_info
+                    [](int, int, int, int, int, int, int, int, int, int)
+                    {
+                    }
                 );
 
                 if (res == 0)
@@ -185,17 +172,17 @@ namespace engi::vk
                 // advance to next chunk
                 first_char += baked_count;
                 remaining -= baked_count;
-                ++atlas_index;
+                ++layer_count;
             }
         }
 
-        if (atlas_layers.empty())
+        if (layer_count == 0)
         {
             std::println("[ERROR] Font atlas has no baked layers.");
             return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
         }
 
-        out.m_layer_count = static_cast<uint32_t>(atlas_layers.size());
+        out.m_layer_count = static_cast<uint32_t>(layer_count);
 
         // Create staging buffer for all layers
         VkBufferCreateInfo staging_buffer_info = {
@@ -219,9 +206,70 @@ namespace engi::vk
         staging_buffer = std::move(staging_buffer_res.value());
 
         auto* staging_ptr = static_cast<unsigned char*>(staging_buffer.data());
-        for (size_t i = 0; i < atlas_layers.size(); ++i)
+
+        // Pass 2: bake directly into mapped staging memory and gather glyph info
+        int atlas_index = 0;
+        for (const auto& range : ranges_to_use)
         {
-            std::memcpy(staging_ptr + i * layer_size, atlas_layers[i].data(), static_cast<size_t>(layer_size));
+            int first_char = range.first_char;
+            int remaining = range.char_count;
+
+            while (remaining > 0)
+            {
+                auto fetch_glyph_info = [&out, &atlas_index, bitmap_width, bitmap_height](int codepoint, int x0, int y0, int x1, int y1, int u0, int v0, int u1, int v1, int advance)
+                {
+                    const auto u0_norm = static_cast<float>(u0) / static_cast<float>(bitmap_width);
+                    const auto v0_norm = static_cast<float>(v0) / static_cast<float>(bitmap_height);
+                    const auto u1_norm = static_cast<float>(u1) / static_cast<float>(bitmap_width);
+                    const auto v1_norm = static_cast<float>(v1) / static_cast<float>(bitmap_height);
+
+                    out.m_glyph_map.emplace(codepoint, Glyph{
+                        .x0 = static_cast<int16_t>(x0),
+                        .y0 = static_cast<int16_t>(y0),
+                        .x1 = static_cast<int16_t>(x1),
+                        .y1 = static_cast<int16_t>(y1),
+                        .u0 = u0_norm,
+                        .v0 = v0_norm,
+                        .u1 = u1_norm,
+                        .v1 = v1_norm,
+                        .advance = static_cast<int16_t>(advance),
+                        .image_id = static_cast<int16_t>(atlas_index)
+                    });
+
+                    out.m_advance = advance;
+                };
+
+                int res = stbtt_BakeFontBitmap(
+                    font_info,
+                    font_scale,
+                    staging_ptr + static_cast<size_t>(atlas_index) * static_cast<size_t>(layer_size),
+                    static_cast<int>(bitmap_width),
+                    static_cast<int>(bitmap_height),
+                    first_char,
+                    remaining,
+                    fetch_glyph_info
+                );
+
+                if (res == 0)
+                {
+                    std::println("[ERROR] Font baking failed on pass 2.");
+                    return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+                }
+
+                int baked_count = 0;
+                if (res < 0)
+                {
+                    baked_count = -res;
+                }
+                else
+                {
+                    baked_count = remaining;
+                }
+
+                first_char += baked_count;
+                remaining -= baked_count;
+                ++atlas_index;
+            }
         }
 
         // Create one GPU image with array layers
@@ -304,7 +352,7 @@ namespace engi::vk
         vkCmdPipelineBarrier2(cmd, &dep_info);
 
         std::vector<VkBufferImageCopy> copy_infos;
-        copy_infos.reserve(atlas_layers.size());
+        copy_infos.reserve(out.m_layer_count);
         for (uint32_t layer = 0; layer < out.m_layer_count; ++layer)
         {
             copy_infos.push_back(VkBufferImageCopy{

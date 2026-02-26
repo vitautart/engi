@@ -16,7 +16,7 @@ namespace engi::vk
     struct Glyph
     {
         int16_t x0, y0, x1, y1;  // pixel coords in bitmap
-        int16_t u0, v0, u1, v1;  // texcoord in bitmap
+        float u0, v0, u1, v1;    // normalized texcoord in bitmap
         int16_t advance;
         int16_t image_id;        // array layer in atlas image
     };

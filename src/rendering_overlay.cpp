@@ -63,10 +63,10 @@ namespace engi::vk
             const go::f32 x1 = cursor_x + static_cast<go::f32>(glyph->x1);
             const go::f32 y1 = cursor_y + static_cast<go::f32>(glyph->y1);
 
-            const go::f32 u0 = static_cast<go::f32>(glyph->u0);
-            const go::f32 v0 = static_cast<go::f32>(glyph->v0);
-            const go::f32 u1 = static_cast<go::f32>(glyph->u1);
-            const go::f32 v1 = static_cast<go::f32>(glyph->v1);
+            const go::f32 u0 = glyph->u0;
+            const go::f32 v0 = glyph->v0;
+            const go::f32 u1 = glyph->u1;
+            const go::f32 v1 = glyph->v1;
 
             const go::u32 image_id = static_cast<go::u32>(glyph->image_id);
 

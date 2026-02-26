@@ -23,9 +23,7 @@ layout (push_constant) uniform Constants
 
 void main()
 {
-    vec2 tex_size = vec2(textureSize(u_font_atlas[c.font_id], 0).xy);
-    vec2 uv_norm = in_uv / tex_size;
-    float alpha = textureLod(u_font_atlas[c.font_id], vec3(uv_norm, float(in_img)), 0).r;
+    float alpha = textureLod(u_font_atlas[c.font_id], vec3(in_uv, float(in_img)), 0).r;
     out_color = vec4(in_color.rgb, in_color.a * alpha);
 }
 
