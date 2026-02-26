@@ -37,6 +37,7 @@ private:
 
 private:
     GLFWwindow* m_glfw_window;
+    bool m_resize_pending = false;
     Deinitalizer m_deinititalizer;
     // Add rest of RAII members below Deinitalizer
     // To ensure proper destruction order

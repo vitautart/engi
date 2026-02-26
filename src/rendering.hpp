@@ -65,6 +65,7 @@ namespace engi::vk
 
     // Lifetime management of renderer
     auto init(GLFWwindow* window) noexcept -> bool;
+    auto resize(GLFWwindow* window) noexcept -> bool;
     auto destroy() noexcept -> void;
 
     // ONE-TIME API for resource initialization before rendering starts.
@@ -126,6 +127,7 @@ namespace engi::vk
     auto current_frame_id() -> uint32_t;
     auto color_format() noexcept -> VkFormat;
     auto depth_format() noexcept -> VkFormat;
+    auto extent() noexcept -> VkExtent2D;
     auto sample_count() noexcept -> VkSampleCountFlagBits;
     consteval auto frame_count() noexcept -> uint32_t { return 2; }
 }

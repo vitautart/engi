@@ -734,12 +734,26 @@ static auto create_sync_data() -> bool
         .flags = VK_FENCE_CREATE_SIGNALED_BIT
     };
 
-    for (size_t i = 0; i < RenderingConfig::frames; i++)
+    if (ins.win.image_semaphores.empty())
     {
-        VkSemaphore item;
-        auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
-        VK_CHECK_RETURN(result, "[ERROR] Semaphore creation failed: {}");
-        ins.win.image_semaphores.push_back(item);
+        for (size_t i = 0; i < RenderingConfig::frames; i++)
+        {
+            VkSemaphore item;
+            auto result = vkCreateSemaphore(ins.device, &info_sem, nullptr, &item);
+            VK_CHECK_RETURN(result, "[ERROR] Semaphore creation failed: {}");
+            ins.win.image_semaphores.push_back(item);
+        }
+    }
+
+    if (ins.win.command_fences.empty())
+    {
+        for (size_t i = 0; i < RenderingConfig::frames; i++)
+        {
+            VkFence item;
+            auto result = vkCreateFence(ins.device, &info_fen, nullptr, &item);
+            VK_CHECK_RETURN(result, "[ERROR] Fence creation failed: {}");
+            ins.win.command_fences.push_back(item);
+        }
     }
 
     for (const auto& _ : ins.win.resolve_images)
@@ -749,15 +763,43 @@ static auto create_sync_data() -> bool
         VK_CHECK_RETURN(result, "[ERROR] Semaphore creation failed: {}");
         ins.win.command_semaphores.push_back(item);
     }
-
-    for (size_t i = 0; i < RenderingConfig::frames; i++)
-    {
-        VkFence item;
-        auto result = vkCreateFence(ins.device, &info_fen, nullptr, &item);
-        VK_CHECK_RETURN(result, "[ERROR] Fence creation failed: {}");
-        ins.win.command_fences.push_back(item);
-    }
     return true;
+}
+
+static auto destroy_swapchain_resources() -> void
+{
+    if (!ins.device)
+        return;
+
+    vkDeviceWaitIdle(ins.device);
+
+    if (auto& data = ins.win.color_cmd_buffers; !data.empty())
+        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
+    ins.win.color_cmd_buffers.clear();
+
+    if (auto& data = ins.win.present_cmd_buffers; !data.empty())
+        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
+    ins.win.present_cmd_buffers.clear();
+
+    for (auto semaphore : ins.win.command_semaphores)
+        vkDestroySemaphore(ins.device, semaphore, nullptr);
+    ins.win.command_semaphores.clear();
+
+    ins.win.color_images.clear();
+    ins.win.depth_images.clear();
+    ins.win.resolve_images.clear();
+
+    if (ins.win.swapchain)
+    {
+        vkDestroySwapchainKHR(ins.device, ins.win.swapchain, nullptr);
+        ins.win.swapchain = VK_NULL_HANDLE;
+    }
+
+    ins.win.work_cmd_buffers.clear();
+    ins.win.buffer_barriers.clear();
+    ins.win.image_barriers.clear();
+    ins.win.memory_barriers.clear();
+    ins.win.image_id = 0;
 }
 
 static auto create_cmd_pool() -> bool
@@ -1020,6 +1062,33 @@ auto engi::vk::init(GLFWwindow* window) noexcept -> bool
     return true;
 }
 
+auto engi::vk::resize(GLFWwindow* window) noexcept -> bool
+{
+    if (!window || !ins.device)
+        return false;
+
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    if (width == 0 || height == 0)
+        return false;
+
+    destroy_swapchain_resources();
+
+    if (!create_swapchain(window))
+        return false;
+    if (!create_swapchain_images())
+        return false;
+    if (!create_sync_data())
+        return false;
+    if (!create_transit_cmd_buffers())
+        return false;
+
+    system_resource_initialization();
+    std::println("[INFO] Swapchain resized to {}x{}", width, height);
+    return true;
+}
+
 auto engi::vk::one_time_submit_start() -> VkCommandBuffer
 {
     VkCommandBufferAllocateInfo allocInfo =
@@ -1063,7 +1132,6 @@ auto engi::vk::wait_frame() -> uint32_t
 {
     const auto cmd_fence = ins.win.command_fences[ins.win.frame_id];
     vkWaitForFences(ins.device, 1, &cmd_fence, VK_TRUE, UINT64_MAX);
-    auto result = vkResetFences(ins.device, 1, &cmd_fence);
 
     // Clean up buffers that were marked for deletion in this frame
     ins.win.buffers_to_delete[ins.win.frame_id].clear();
@@ -1325,6 +1393,9 @@ auto engi::vk::submit() -> bool
     ins.win.work_cmd_buffers.push_back(ins.win.present_cmd_buffers[ins.win.image_id]);
 
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    vkResetFences(ins.device, 1, &cmd_fence);
+
     VkSubmitInfo submit_info =
     {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -1457,6 +1528,11 @@ auto engi::vk::depth_format() noexcept -> VkFormat
     return ins.depth_format;
 }
 
+auto engi::vk::extent() noexcept -> VkExtent2D
+{
+    return ins.win.extent;
+}
+
 auto engi::vk::sample_count() noexcept -> VkSampleCountFlagBits
 {
     return RenderingConfig::samples;
@@ -1474,13 +1550,7 @@ auto engi::vk::destroy() noexcept -> void
     if (ins.device)
         vkDeviceWaitIdle(ins.device);
 
-    if (auto& data = ins.win.color_cmd_buffers; !data.empty())
-        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
-    ins.win.color_cmd_buffers.clear();
-
-    if (auto& data = ins.win.present_cmd_buffers; !data.empty())
-        vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
-    ins.win.present_cmd_buffers.clear();
+    destroy_swapchain_resources();
 
     if (auto& data = ins.win.main_cmd_buffers; !data.empty())
         vkFreeCommandBuffers(ins.device, ins.win.cmd_pool, data.size(), data.data());
@@ -1493,23 +1563,9 @@ auto engi::vk::destroy() noexcept -> void
         vkDestroySemaphore(ins.device, semaphore, nullptr);
     ins.win.image_semaphores.clear();
 
-    for (auto semaphore : ins.win.command_semaphores)
-        vkDestroySemaphore(ins.device, semaphore, nullptr);
-    ins.win.command_semaphores.clear();
-
     for (auto fence : ins.win.command_fences)
         vkDestroyFence(ins.device, fence, nullptr);
     ins.win.command_fences.clear();
-
-    ins.win.color_images.clear();
-    ins.win.depth_images.clear();
-    ins.win.resolve_images.clear();
-
-    if (ins.win.swapchain)
-    {
-        vkDestroySwapchainKHR(ins.device, ins.win.swapchain, nullptr);
-        ins.win.swapchain = VK_NULL_HANDLE;
-    }
 
     if (ins.win.surface)
     {
@@ -1669,27 +1725,6 @@ auto engi::vk::Buffer::create_gpu(const VkBufferCreateInfo& info) noexcept -> st
 
     return out;
 }
-
-// https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/usage_patterns.html
-/*auto engi::vk::Buffer::create_gpu_mapped(const VkBufferCreateInfo& info) noexcept -> std::expected<Buffer, VkResult>
-{
-    Buffer out;
-    VmaAllocationInfo alloc_info;
-    VmaAllocationCreateInfo alloc_create_info = 
-    {
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT & 
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT &
-            VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT,
-        .usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO
-    };
-    auto result = vmaCreateBuffer(ins.allocator, &info, &alloc_create_info, &out.m_buffer, &out.m_memory, &alloc_info);
-    if (result != VK_SUCCESS) return std::unexpected(result);
-
-    out.m_ptr = alloc_info.pMappedData;
-    out.m_size = info.size;
-
-    return out;
-}*/
 
 engi::vk::Buffer::~Buffer() noexcept
 {

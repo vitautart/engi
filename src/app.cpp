@@ -405,11 +405,15 @@ namespace TestCube
         auto now = std::chrono::high_resolution_clock::now();
         float elapsed = std::chrono::duration<float>(now - g_start_time).count();
 
+        auto fb_extent = engi::vk::extent();
+        if (fb_extent.width == 0 || fb_extent.height == 0)
+            return;
+
         go::Camera3D camera(
             {0, 0, 0},
             {1, 0, 0},
             {0, 1, 0},
-            {800.0f, 600.0f},
+            {static_cast<float>(fb_extent.width), static_cast<float>(fb_extent.height)},
             true
         );
         go::mf4 proj = camera.get_proj();
@@ -450,7 +454,7 @@ namespace TestCube
         engi::vk::cmd_sync_barriers(cmd);
 
         // Sync UI buffers (upload + barriers) before render pass
-        VkRect2D full_rect = { .offset = {0, 0}, .extent = {800, 600} };
+        VkRect2D full_rect = { .offset = {0, 0}, .extent = fb_extent };
         go::vf4 clear_color = {34.0f/255.f, 34.0f/255.f, 59.0f/255.f, 1.0f};
         g_ui.sync(cmd, full_rect);
 
@@ -583,6 +587,8 @@ auto engi::App::fn_scroll_interior(double xoffset, double yoffset) -> void
 
 auto engi::App::fn_resize_interior(int width,int height) -> void
 {
+    if (width > 0 && height > 0)
+        m_resize_pending = true;
 }
 
 auto engi::App::create() noexcept -> std::unique_ptr<App>
@@ -601,6 +607,7 @@ auto engi::App::create() noexcept -> std::unique_ptr<App>
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    //glfwWindowHint(GLFW_RESIZABLE, true);
     glfwWindowHint(GLFW_RESIZABLE, false);
     app->m_glfw_window = glfwCreateWindow(800, 600, "HomeCAD", NULL, NULL);
     app->m_deinititalizer.m_glfw_window = app->m_glfw_window;
@@ -631,9 +638,25 @@ auto engi::App::run() noexcept -> void
     std::println("[INFO] Starting app...");
     while(!glfwWindowShouldClose(m_glfw_window))
     {
+        if (m_resize_pending)
+        {
+            if (engi::vk::resize(m_glfw_window))
+                m_resize_pending = false;
+            else
+            {
+                glfwWaitEvents();
+                continue;
+            }
+        }
+
         // Acquire next swapchain image
         auto frame = engi::vk::wait_frame();
         auto acquire_result = engi::vk::acquire();
+        if (acquire_result.result == VK_ERROR_OUT_OF_DATE_KHR || acquire_result.result == VK_SUBOPTIMAL_KHR)
+        {
+            m_resize_pending = true;
+            continue;
+        }
         if (acquire_result.result != VK_SUCCESS)
         {
             std::println("[ERROR] Failed to acquire swapchain image");
@@ -653,8 +676,8 @@ auto engi::App::run() noexcept -> void
         // Submit and present
         if (!engi::vk::submit())
         {
-            std::println("[ERROR] Failed to submit commands");
-            break;
+            m_resize_pending = true;
+            continue;
         }
 
         glfwWaitEvents();
