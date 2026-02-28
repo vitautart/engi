@@ -86,6 +86,7 @@ namespace engi::vk
         auto clear() noexcept -> void;
 
         auto add_rect(const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void;
+        auto add_triangle(const go::vf2& p0, const go::vf2& p1, const go::vf2& p2, const go::vu4& color) -> void;
 
         auto upload(VkCommandBuffer cmd) noexcept -> std::expected<void, VkResult>;
 

@@ -368,7 +368,7 @@ namespace TestCube
                     check->on_change = [](bool v){ std::println("[UI] Checkbox: {}", v); };
 
                     auto* input = right_panel->add_new<engi::ui::UITextInput>();
-                    input->size = {92.0f, 20.0f};
+                    input->size = {92.0f, 24.0f};
                     input->text = L"Input";
                     input->on_change = [](const std::wstring& text)
                     {

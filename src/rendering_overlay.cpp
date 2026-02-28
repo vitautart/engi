@@ -166,6 +166,22 @@ namespace engi::vk
         m_index_count = static_cast<uint32_t>(m_indices.size());
     }
 
+    auto GeometryBuffer2D::add_triangle(const go::vf2& p0, const go::vf2& p1, const go::vf2& p2, const go::vu4& color) -> void
+    {
+        const go::u32 col = go::packUnorm4x8(color);
+        const uint32_t first_vtx = static_cast<uint32_t>(m_vertices.size());
+
+        m_vertices.push_back({ p0, {0, 0}, col, 0 });
+        m_vertices.push_back({ p1, {0, 0}, col, 0 });
+        m_vertices.push_back({ p2, {0, 0}, col, 0 });
+
+        m_indices.push_back(first_vtx + 0);
+        m_indices.push_back(first_vtx + 1);
+        m_indices.push_back(first_vtx + 2);
+
+        m_index_count = static_cast<uint32_t>(m_indices.size());
+    }
+
     auto GeometryBuffer2D::upload(VkCommandBuffer cmd) noexcept -> std::expected<void, VkResult>
     {
         if (m_indices.empty())

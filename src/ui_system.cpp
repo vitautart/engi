@@ -891,7 +891,10 @@ namespace engi::ui
         auto abs_pos = ctx.origin + position;
 
         ctx.geo.add_rect(abs_pos, size, bg_color);
-        ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
+        if (!m_open)
+        {
+            ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
+        }
 
         if (selected >= 0 && selected < static_cast<int>(items.size()))
         {
@@ -902,13 +905,24 @@ namespace engi::ui
             }
         }
 
-        // Draw arrow indicator
-        auto arrow_x = abs_pos[0] + size[0] - 16.0f;
-        auto arrow_pos = centered_single_line_text_pos(abs_pos, size, L"\x25BC", font_atlas);
-        auto arrow_y = arrow_pos[1];
-        if (text_buf)
+        auto arrow_center = go::vf2{abs_pos[0] + size[0] - 12.0f, abs_pos[1] + size[1] * 0.5f};
+        auto side = std::max(6.0f, std::min(10.0f, size[1] * 0.45f));
+        auto half_w = side * 0.5f;
+        auto half_h = side * 0.5f * std::sqrt(3.0f) * 0.5f;
+
+        if (m_open)
         {
-            text_buf->add(m_open ? L"\x25B2" : L"\x25BC", {arrow_x, arrow_y}, text_color);
+            auto p0 = go::vf2{arrow_center[0] - half_w, arrow_center[1] + half_h};
+            auto p1 = go::vf2{arrow_center[0] + half_w, arrow_center[1] + half_h};
+            auto p2 = go::vf2{arrow_center[0], arrow_center[1] - half_h};
+            ctx.geo.add_triangle(p0, p1, p2, text_color);
+        }
+        else
+        {
+            auto p0 = go::vf2{arrow_center[0] - half_w, arrow_center[1] - half_h};
+            auto p1 = go::vf2{arrow_center[0] + half_w, arrow_center[1] - half_h};
+            auto p2 = go::vf2{arrow_center[0], arrow_center[1] + half_h};
+            ctx.geo.add_triangle(p0, p1, p2, text_color);
         }
 
         if (m_open)
@@ -919,7 +933,6 @@ namespace engi::ui
                 auto iy = abs_pos[1] + size[1] + static_cast<float>(i) * item_height;
                 auto& col = (i == m_hovered_item) ? hover_color : bg_color;
                 ctx.geo.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, col);
-                ctx.wire.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, go::vu4{80, 80, 110, 255});
                 auto item_pos = centered_single_line_text_pos(
                     go::vf2{abs_pos[0], iy},
                     go::vf2{size[0], item_height},
@@ -931,6 +944,9 @@ namespace engi::ui
                     text_buf->add(items[i], item_pos, text_color);
                 }
             }
+
+            auto open_size = go::vf2{size[0], size[1] * (static_cast<float>(items.size()) + 1.0f)};
+            ctx.wire.add_rect(abs_pos, open_size, go::vu4{100, 100, 130, 255});
         }
     }
 
