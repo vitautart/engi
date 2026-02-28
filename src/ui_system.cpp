@@ -363,6 +363,7 @@ namespace engi::ui
             m_focused = inside;
             if (inside)
             {
+                ev.active_interaction_id = m_id;
                 auto x = local[0] - 4.0f + m_scroll_x;
                 m_cursor = find_cursor_in_line(text, x, nullptr);
                 ev.consumed = true;
@@ -434,6 +435,11 @@ namespace engi::ui
         }
 
         return false;
+    }
+
+    auto UITextInput::clear_interaction_state() -> void
+    {
+        m_focused = false;
     }
 
     auto UITextInput::draw(DrawContext& ctx) -> void
@@ -539,6 +545,7 @@ namespace engi::ui
             m_focused = inside;
             if (inside)
             {
+                ev.active_interaction_id = m_id;
                 auto content_local = go::vf2{local[0] + m_scroll_x, local[1] + m_scroll_y};
                 m_cursor = find_cursor_in_multiline_text(text, content_local, nullptr);
                 ev.consumed = true;
@@ -717,6 +724,11 @@ namespace engi::ui
         }
     }
 
+    auto UITextArea::clear_interaction_state() -> void
+    {
+        m_focused = false;
+    }
+
     // ===== UISlider =====
 
     auto UISlider::on_event(UIEvent& ev) -> bool
@@ -871,6 +883,7 @@ namespace engi::ui
             else if (inside_header)
             {
                 m_open = true;
+                ev.active_interaction_id = m_id;
                 ev.consumed = true;
                 return true;
             }
@@ -881,6 +894,12 @@ namespace engi::ui
         }
 
         return false;
+    }
+
+    auto UIDropdown::clear_interaction_state() -> void
+    {
+        m_open = false;
+        m_hovered_item = -1;
     }
 
     auto UIDropdown::draw(DrawContext& ctx) -> void
@@ -1062,6 +1081,7 @@ namespace engi::ui
                 if ((*it)->on_event(child_ev))
                 {
                     ev.consumed = child_ev.consumed;
+                    ev.active_interaction_id = child_ev.active_interaction_id;
                     return true;
                 }
             }
@@ -1073,6 +1093,7 @@ namespace engi::ui
             if ((*it)->on_event(child_ev))
             {
                 ev.consumed = child_ev.consumed;
+                ev.active_interaction_id = child_ev.active_interaction_id;
                 return true;
             }
         }
@@ -1085,6 +1106,27 @@ namespace engi::ui
         }
 
         return false;
+    }
+
+    auto UIPanel::clear_interaction_state_recursive(uint32_t keep_id) -> void
+    {
+        for (auto& child : m_children)
+        {
+            if (!child)
+            {
+                continue;
+            }
+
+            if (child->get_id() != keep_id)
+            {
+                child->clear_interaction_state();
+            }
+
+            if (auto* child_panel = dynamic_cast<UIPanel*>(child.get()))
+            {
+                child_panel->clear_interaction_state_recursive(keep_id);
+            }
+        }
     }
 
     auto UIPanel::draw(DrawContext& ctx) -> void
@@ -1493,6 +1535,11 @@ namespace engi::ui
             .button = button
         };
         m_root.on_event(ev);
+
+        if (button == 0 && action == 1)
+        {
+            m_root.clear_interaction_state_recursive(ev.active_interaction_id);
+        }
     }
 
     auto UISystem::process_key(int key, int action, int mods) -> void

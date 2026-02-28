@@ -35,6 +35,7 @@ namespace engi::ui
         float scroll_dx = 0.0f;
         float scroll_dy = 0.0f;
         unsigned int codepoint = 0;
+        uint32_t active_interaction_id = 0;
         bool consumed = false;
     };
 
@@ -79,6 +80,7 @@ namespace engi::ui
 
         virtual auto on_event(UIEvent& ev) -> bool = 0;
         virtual auto draw(DrawContext& ctx) -> void = 0;
+        virtual auto clear_interaction_state() -> void {}
 
         auto get_id() const noexcept -> uint32_t { return m_id; }
 
@@ -145,6 +147,7 @@ namespace engi::ui
 
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
+        auto clear_interaction_state() -> void override;
 
         std::wstring text;
         go::vu4 bg_color     = {30, 30, 45, 255};
@@ -168,6 +171,7 @@ namespace engi::ui
 
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
+        auto clear_interaction_state() -> void override;
 
         std::wstring text;
         go::vu4 bg_color     = {30, 30, 45, 255};
@@ -232,6 +236,7 @@ namespace engi::ui
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
         auto is_open() const -> bool { return m_open; }
+        auto clear_interaction_state() -> void override;
 
         std::vector<std::wstring> items;
         int selected = -1;
@@ -285,6 +290,7 @@ namespace engi::ui
         auto content_height() const -> float;
         auto max_scroll_y() const -> float;
         auto clamp_scroll() -> void;
+        auto clear_interaction_state_recursive(uint32_t keep_id) -> void;
         std::vector<std::unique_ptr<UIElement>> m_children;
     };
 
