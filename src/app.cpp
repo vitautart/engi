@@ -273,6 +273,21 @@ namespace TestCube
                     title->color = {240, 200, 90, 255};
                     title->size = {220.0f, 20.0f};
 
+                    auto* align_left = root.add_new<engi::ui::UILabel>();
+                    align_left->text = L"Left aligned label";
+                    align_left->size = {220.0f, 18.0f};
+                    align_left->align = engi::ui::UILabelAlign::Left;
+
+                    auto* align_center = root.add_new<engi::ui::UILabel>();
+                    align_center->text = L"Centered label";
+                    align_center->size = {220.0f, 18.0f};
+                    align_center->align = engi::ui::UILabelAlign::Center;
+
+                    auto* align_right = root.add_new<engi::ui::UILabel>();
+                    align_right->text = L"Right aligned label";
+                    align_right->size = {220.0f, 18.0f};
+                    align_right->align = engi::ui::UILabelAlign::Right;
+
                     auto* main_panel = root.add_new<engi::ui::UIPanel>();
                     main_panel->size = {220.0f, 116.0f};
                     main_panel->layout = engi::ui::Layout::Horizontal;
@@ -297,6 +312,7 @@ namespace TestCube
                     auto* left_label = left_panel->add_new<engi::ui::UILabel>();
                     left_label->text = L"Left";
                     left_label->size = {80.0f, 16.0f};
+                    left_label->align = engi::ui::UILabelAlign::Center;
 
                     auto* btn_hello = left_panel->add_new<engi::ui::UIButton>();
                     btn_hello->label = L"Hello";
@@ -343,6 +359,7 @@ namespace TestCube
                     auto* right_label = right_panel->add_new<engi::ui::UILabel>();
                     right_label->text = L"Right";
                     right_label->size = {80.0f, 16.0f};
+                    right_label->align = engi::ui::UILabelAlign::Center;
 
                     auto* check = right_panel->add_new<engi::ui::UICheckbox>();
                     check->label = L"On";

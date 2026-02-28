@@ -94,6 +94,13 @@ namespace engi::ui
 
     // ===== UILabel =====
 
+    enum class UILabelAlign
+    {
+        Left,
+        Center,
+        Right
+    };
+
     class UILabel : public UIElement
     {
     public:
@@ -104,6 +111,7 @@ namespace engi::ui
 
         std::wstring text;
         go::vu4 color = {255, 255, 255, 255};
+        UILabelAlign align = UILabelAlign::Left;
     };
 
     // ===== UIButton =====

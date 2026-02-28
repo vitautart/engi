@@ -240,6 +240,20 @@ namespace engi::ui
         return {max_w, content_h};
     }
 
+    static auto centered_single_line_text_pos(
+        const go::vf2& rect_pos,
+        const go::vf2& rect_size,
+        std::wstring_view text,
+        const vk::IFontAtlas* font_atlas
+    ) -> go::vf2
+    {
+        auto font_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
+        auto text_w = font_atlas ? static_cast<float>(font_atlas->calculate_line_width(text)) : 0.0f;
+        auto text_x = std::floor(rect_pos[0] + (rect_size[0] - text_w) * 0.5f);
+        auto text_y = std::floor(rect_pos[1] + (rect_size[1] + font_h) * 0.5f);
+        return {text_x, text_y};
+    }
+
     static constexpr auto k_panel_scrollbar_width = 4.0f;
     static constexpr auto k_panel_scrollbar_min_thumb_height = 12.0f;
     static constexpr auto k_text_edit_padding = 4.0f;
@@ -267,8 +281,18 @@ namespace engi::ui
 
         auto abs_pos = ctx.origin + position;
         auto font_h = static_cast<float>(font_atlas->get_x_height());
+        auto text_w = static_cast<float>(font_atlas->calculate_line_width(text));
+        auto text_x = abs_pos[0];
+        if (align == UILabelAlign::Center)
+        {
+            text_x = std::floor(abs_pos[0] + (size[0] - text_w) * 0.5f);
+        }
+        else if (align == UILabelAlign::Right)
+        {
+            text_x = std::floor(abs_pos[0] + size[0] - text_w);
+        }
         auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline: center x-height inside element
-        text_buf->add(text, {abs_pos[0], text_y}, color);
+        text_buf->add(text, {text_x, text_y}, color);
     }
 
     // ===== UIButton =====
@@ -315,13 +339,10 @@ namespace engi::ui
         ctx.geo.add_rect(abs_pos, size, col);
         ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
 
-        auto font_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
-        auto text_w = font_atlas ? static_cast<float>(font_atlas->calculate_line_width(label)) : 0.0f;
-        auto text_x = std::floor(abs_pos[0] + (size[0] - text_w) * 0.5f);
-        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
+        auto text_pos = centered_single_line_text_pos(abs_pos, size, label, font_atlas);
         if (text_buf)
         {
-            text_buf->add(label, {text_x, text_y}, text_color);
+            text_buf->add(label, text_pos, text_color);
         }
     }
 
@@ -869,23 +890,22 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
-        auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
-
         ctx.geo.add_rect(abs_pos, size, bg_color);
         ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
 
         if (selected >= 0 && selected < static_cast<int>(items.size()))
         {
-            auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
+            auto text_pos = centered_single_line_text_pos(abs_pos, size, items[selected], font_atlas);
             if (text_buf)
             {
-                text_buf->add(items[selected], {abs_pos[0] + 6.0f, text_y}, text_color);
+                text_buf->add(items[selected], text_pos, text_color);
             }
         }
 
         // Draw arrow indicator
         auto arrow_x = abs_pos[0] + size[0] - 16.0f;
-        auto arrow_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
+        auto arrow_pos = centered_single_line_text_pos(abs_pos, size, L"\x25BC", font_atlas);
+        auto arrow_y = arrow_pos[1];
         if (text_buf)
         {
             text_buf->add(m_open ? L"\x25B2" : L"\x25BC", {arrow_x, arrow_y}, text_color);
@@ -900,10 +920,15 @@ namespace engi::ui
                 auto& col = (i == m_hovered_item) ? hover_color : bg_color;
                 ctx.geo.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, col);
                 ctx.wire.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, go::vu4{80, 80, 110, 255});
-                auto item_y = std::floor(iy + (item_height + font_h) * 0.5f);
+                auto item_pos = centered_single_line_text_pos(
+                    go::vf2{abs_pos[0], iy},
+                    go::vf2{size[0], item_height},
+                    items[i],
+                    font_atlas
+                );
                 if (text_buf)
                 {
-                    text_buf->add(items[i], go::vf2{abs_pos[0] + 6.0f, item_y}, text_color);
+                    text_buf->add(items[i], item_pos, text_color);
                 }
             }
         }
