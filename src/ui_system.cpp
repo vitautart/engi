@@ -190,6 +190,9 @@ namespace engi::ui
         return static_cast<uint32_t>(text.size());
     }
 
+    static constexpr auto k_panel_scrollbar_width = 4.0f;
+    static constexpr auto k_panel_scrollbar_min_thumb_height = 12.0f;
+
     // ===== UIElement =====
 
     UIElement::UIElement()
@@ -278,6 +281,7 @@ namespace engi::ui
         if (!visible || !enabled) return false;
 
         m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
+        m_scroll_x = std::max(0.0f, m_scroll_x);
 
         auto local = go::vf2{ev.mouse_pos[0] - position[0], ev.mouse_pos[1] - position[1]};
         auto inside = point_in_rect(local, {0, 0}, size);
@@ -287,7 +291,7 @@ namespace engi::ui
             m_focused = inside;
             if (inside)
             {
-                auto x = local[0] - 4.0f;
+                auto x = local[0] - 4.0f + m_scroll_x;
                 m_cursor = find_cursor_in_line(text, x, nullptr);
                 ev.consumed = true;
                 return true;
@@ -372,7 +376,26 @@ namespace engi::ui
         ctx.wire.add_rect(abs_pos, size, m_focused ? go::vu4{120, 120, 200, 255} : border_color);
 
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
-        auto text_x = abs_pos[0] + 4.0f;
+        auto inner_w = std::max(0.0f, size[0] - 8.0f);
+        auto cursor_px = measure_prefix_width(text, m_cursor, font_atlas);
+        auto text_w = measure_prefix_width(text, static_cast<uint32_t>(text.size()), font_atlas);
+        auto max_scroll_x = std::max(0.0f, text_w - inner_w);
+
+        auto cursor_margin = 2.0f;
+        auto min_visible_x = cursor_margin;
+        auto max_visible_x = std::max(min_visible_x, inner_w - cursor_margin - 2.0f);
+        auto cursor_view_x = cursor_px - m_scroll_x;
+        if (cursor_view_x > max_visible_x)
+        {
+            m_scroll_x = cursor_px - max_visible_x;
+        }
+        else if (cursor_view_x < min_visible_x)
+        {
+            m_scroll_x = cursor_px - min_visible_x;
+        }
+        m_scroll_x = std::clamp(m_scroll_x, 0.0f, max_scroll_x);
+
+        auto text_x = abs_pos[0] + 4.0f - m_scroll_x;
         auto text_y = std::floor(abs_pos[1] + (size[1] + cap_h) * 0.5f);
         if (text_buf)
         {
@@ -784,11 +807,42 @@ namespace engi::ui
         }
     }
 
+    auto UIPanel::content_height() const -> float
+    {
+        auto max_bottom = padding;
+        for (const auto& child : m_children)
+        {
+            if (!child->visible)
+            {
+                continue;
+            }
+            max_bottom = std::max(max_bottom, child->position[1] + child->size[1]);
+        }
+        return max_bottom + padding;
+    }
+
+    auto UIPanel::max_scroll_y() const -> float
+    {
+        if (!scrollable)
+        {
+            return 0.0f;
+        }
+        return std::max(0.0f, content_height() - size[1]);
+    }
+
+    auto UIPanel::clamp_scroll() -> void
+    {
+        auto max_scroll = max_scroll_y();
+        scroll_offset[0] = 0.0f;
+        scroll_offset[1] = std::clamp(scroll_offset[1], -max_scroll, 0.0f);
+    }
+
     auto UIPanel::on_event(UIEvent& ev) -> bool
     {
         if (!visible || !enabled) return false;
 
         apply_layout();
+        clamp_scroll();
 
         auto local = go::vf2{ev.mouse_pos[0] - position[0], ev.mouse_pos[1] - position[1]};
         auto inside = point_in_rect(local, {0, 0}, size);
@@ -796,6 +850,7 @@ namespace engi::ui
         if (ev.type == EventType::Scroll && scrollable && inside)
         {
             scroll_offset[1] += ev.scroll_dy * 20.0f;
+            clamp_scroll();
             ev.consumed = true;
             return true;
         }
@@ -832,6 +887,7 @@ namespace engi::ui
         if (!visible) return;
 
         apply_layout();
+        clamp_scroll();
 
         auto abs_pos = ctx.origin + position;
 
@@ -868,6 +924,27 @@ namespace engi::ui
         for (auto& child : m_children)
         {
             child->draw(ctx);
+        }
+
+        if (scrollable)
+        {
+            auto max_scroll = max_scroll_y();
+            if (max_scroll > 0.0f)
+            {
+                auto content_h = content_height();
+                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, size[1] * (size[1] / content_h));
+                auto travel = std::max(0.0f, size[1] - thumb_h);
+                auto t = max_scroll > 0.0f ? (-scroll_offset[1] / max_scroll) : 0.0f;
+                t = std::clamp(t, 0.0f, 1.0f);
+                auto thumb_y = abs_pos[1] + travel * t;
+                auto thumb_x = abs_pos[0] + size[0] - k_panel_scrollbar_width;
+
+                ctx.geo.add_rect(
+                    go::vf2{thumb_x, thumb_y},
+                    go::vf2{k_panel_scrollbar_width, thumb_h},
+                    go::vu4{150, 150, 190, 190}
+                );
+            }
         }
 
         // Restore
@@ -956,6 +1033,7 @@ namespace engi::ui
     auto UISystem::build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void
     {
         panel.apply_layout();
+        panel.clamp_scroll();
 
         auto panel_rect = to_rect(panel_abs_pos, panel.size);
         auto panel_clip = rect_intersection(parent_clip, panel_rect);
@@ -1016,6 +1094,27 @@ namespace engi::ui
             else
             {
                 child->draw(panel_ctx);
+            }
+        }
+
+        if (panel.scrollable)
+        {
+            auto max_scroll = panel.max_scroll_y();
+            if (max_scroll > 0.0f)
+            {
+                auto content_h = panel.content_height();
+                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, panel.size[1] * (panel.size[1] / content_h));
+                auto travel = std::max(0.0f, panel.size[1] - thumb_h);
+                auto t = max_scroll > 0.0f ? (-panel.scroll_offset[1] / max_scroll) : 0.0f;
+                t = std::clamp(t, 0.0f, 1.0f);
+                auto thumb_y = panel_abs_pos[1] + travel * t;
+                auto thumb_x = panel_abs_pos[0] + panel.size[0] - k_panel_scrollbar_width;
+
+                panel_buf.geo.add_rect(
+                    go::vf2{thumb_x, thumb_y} - clip_offset,
+                    go::vf2{k_panel_scrollbar_width, thumb_h},
+                    go::vu4{150, 150, 190, 190}
+                );
             }
         }
     }

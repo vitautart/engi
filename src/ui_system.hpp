@@ -147,6 +147,7 @@ namespace engi::ui
     private:
         bool m_focused = false;
         uint32_t m_cursor = 0;
+        float m_scroll_x = 0.0f;
     };
 
     // ===== UITextArea (multi-line) =====
@@ -269,6 +270,9 @@ namespace engi::ui
     private:
         friend class UISystem;
         auto apply_layout() -> void;
+        auto content_height() const -> float;
+        auto max_scroll_y() const -> float;
+        auto clamp_scroll() -> void;
         std::vector<std::unique_ptr<UIElement>> m_children;
     };
 
