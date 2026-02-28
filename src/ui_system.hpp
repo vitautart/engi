@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -52,8 +53,8 @@ namespace engi::ui
     {
         vk::GeometryBuffer2D& geo;
         vk::GeometryBuffer2DWire& wire;
-        vk::TextBuffer& text;
-        const vk::IFontAtlas* font;
+        std::function<vk::TextBuffer*(vk::FontId)> resolve_text_buffer;
+        vk::FontId default_font;
         go::vf2 origin;
         go::vf2 clip_pos;
         go::vf2 clip_size;
@@ -84,6 +85,7 @@ namespace engi::ui
         go::vf2 size = {100.0f, 30.0f};
         bool visible = true;
         bool enabled = true;
+        vk::FontId font = {};
 
     protected:
         uint32_t m_id;
@@ -300,12 +302,13 @@ namespace engi::ui
         {
             vk::GeometryBuffer2D geo;
             vk::GeometryBuffer2DWire wire;
-            vk::TextBuffer text;
+            std::vector<std::optional<vk::TextBuffer>> text;
             VkRect2D view = {};
         };
 
         auto panel_count(const UIPanel& panel) const -> size_t;
         auto ensure_panel_buffers(size_t count) -> bool;
+        auto ensure_panel_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*;
         auto build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void;
 
         UIPanel m_root;

@@ -103,9 +103,6 @@ namespace TestCube
     // Text rendering test
     engi::vk::FontMonoAtlas g_font_atlas;
     engi::vk::RenderingOverlay g_overlay;
-    engi::vk::TextBuffer g_text_buffer;
-    engi::vk::GeometryBuffer2D g_geo_buffer;
-    engi::vk::GeometryBuffer2DWire g_geo_wire_buffer;
 
     // UI system test
     engi::ui::UISystem g_ui;
@@ -261,72 +258,58 @@ namespace TestCube
                 std::println("[WARNING] Failed to init rendering overlay");
             else
             {
-                auto tb_res = engi::vk::TextBuffer::create(font_id);
-                if (tb_res)
-                {
-                    g_text_buffer = std::move(tb_res.value());
-                    g_text_buffer.clear();
-                    g_text_buffer.add(L"Hello engi", go::vf2{10.0f, 20.0f}, go::vu4{255,255,255,255});
-                    if (g_text_buffer.upload(cmd))
-                        engi::vk::add_vertex_buffer_write_barrier(g_text_buffer.vertex_buffer());
-                }
-
-                auto gb_res = engi::vk::GeometryBuffer2D::create();
-                if (gb_res)
-                {
-                    g_geo_buffer = std::move(gb_res.value());
-                    g_geo_buffer.clear();
-                    g_geo_buffer.add_rect(go::vf2{10.0f, 40.0f}, go::vf2{100.0f, 50.0f}, go::vu4{200, 50, 50, 255});
-                    g_geo_buffer.add_rect(go::vf2{120.0f, 40.0f}, go::vf2{100.0f, 50.0f}, go::vu4{50, 200, 50, 255});
-                    if (g_geo_buffer.upload(cmd))
-                    {
-                        engi::vk::add_vertex_buffer_write_barrier(g_geo_buffer.vertex_buffer());
-                        engi::vk::add_index_buffer_write_barrier(g_geo_buffer.index_buffer());
-                    }
-                }
-
-                auto gbw_res = engi::vk::GeometryBuffer2DWire::create();
-                if (gbw_res)
-                {
-                    g_geo_wire_buffer = std::move(gbw_res.value());
-                    g_geo_wire_buffer.clear();
-                    g_geo_wire_buffer.add_rect(go::vf2{10.0f, 100.0f}, go::vf2{100.0f, 50.0f}, go::vu4{255, 255, 0, 255});
-                    g_geo_wire_buffer.add_rect(go::vf2{120.0f, 100.0f}, go::vf2{100.0f, 50.0f}, go::vu4{0, 255, 255, 255});
-                    if (g_geo_wire_buffer.upload(cmd))
-                    {
-                        engi::vk::add_vertex_buffer_write_barrier(g_geo_wire_buffer.vertex_buffer());
-                        engi::vk::add_index_buffer_write_barrier(g_geo_wire_buffer.index_buffer());
-                    }
-                }
-
-                engi::vk::cmd_sync_barriers(cmd);
-
-                // Initialize UI system example
+                // Initialize UI system example (all implemented controls)
                 if (g_ui.init(font_id))
                 {
                     auto& root = g_ui.root();
                     root.layout = engi::ui::Layout::Vertical;
                     root.padding = 10.0f;
-                    root.spacing = 6.0f;
-                    root.bg_color = {18, 18, 30, 200};
+                    root.spacing = 8.0f;
+                    root.draw_background = true;
+                    root.bg_color = {18, 18, 30, 180};
 
                     auto* title = root.add_new<engi::ui::UILabel>();
-                    title->text = L"UI System Demo";
+                    title->text = L"UI controls test";
                     title->color = {240, 200, 90, 255};
-                    title->size = {180.0f, 20.0f};
+                    title->size = {220.0f, 20.0f};
 
-                    auto* btn_hello = root.add_new<engi::ui::UIButton>();
-                    btn_hello->label = L"Say Hello";
-                    btn_hello->size = {120.0f, 24.0f};
-                    btn_hello->on_click = [](){ std::println("[UI] Hello from button!"); };
+                    auto* main_panel = root.add_new<engi::ui::UIPanel>();
+                    main_panel->size = {220.0f, 116.0f};
+                    main_panel->layout = engi::ui::Layout::Horizontal;
+                    main_panel->padding = 4.0f;
+                    main_panel->spacing = 8.0f;
+                    main_panel->draw_background = true;
+                    main_panel->bg_color = {28, 28, 45, 220};
+                    main_panel->draw_border = true;
+                    main_panel->border_color = {110, 110, 140, 255};
+
+                    auto* left_panel = main_panel->add_new<engi::ui::UIPanel>();
+                    left_panel->size = {100.0f, 100.0f};
+                    left_panel->layout = engi::ui::Layout::Vertical;
+                    left_panel->padding = 4.0f;
+                    left_panel->spacing = 4.0f;
+                    left_panel->draw_background = true;
+                    left_panel->bg_color = {38, 38, 58, 220};
+                    left_panel->draw_border = true;
+                    left_panel->border_color = {100, 100, 130, 255};
+                    left_panel->scrollable = true;
+
+                    auto* left_label = left_panel->add_new<engi::ui::UILabel>();
+                    left_label->text = L"Left";
+                    left_label->size = {80.0f, 16.0f};
+
+                    auto* btn_hello = left_panel->add_new<engi::ui::UIButton>();
+                    btn_hello->label = L"Hello";
+                    btn_hello->size = {92.0f, 20.0f};
+                    btn_hello->on_click = [](){ std::println("[UI] Hello click"); };
 
                     g_counter_label = root.add_new<engi::ui::UILabel>();
                     g_counter_label->text = L"Clicks: 0";
-                    g_counter_label->size = {160.0f, 20.0f};
+                    g_counter_label->size = {220.0f, 18.0f};
 
-                    auto* btn_count = root.add_new<engi::ui::UIButton>();
-                    btn_count->label = L"Count Click";
-                    btn_count->size = {120.0f, 24.0f};
+                    auto* btn_count = left_panel->add_new<engi::ui::UIButton>();
+                    btn_count->label = L"Count";
+                    btn_count->size = {92.0f, 20.0f};
                     btn_count->color_normal = {50, 80, 50, 255};
                     btn_count->color_hover = {70, 110, 70, 255};
                     btn_count->color_pressed = {30, 60, 30, 255};
@@ -336,63 +319,73 @@ namespace TestCube
                         g_counter_label->text = L"Clicks: " + std::to_wstring(g_click_count);
                     };
 
-                    auto* slider = root.add_new<engi::ui::UISlider>();
-                    slider->size = {160.0f, 20.0f};
-                    slider->value = 0.5f;
-                    slider->on_change = [](float v){ std::println("[UI] Slider: {:.2f}", v); };
+                    auto* left_slider = left_panel->add_new<engi::ui::UISlider>();
+                    left_slider->size = {92.0f, 16.0f};
+                    left_slider->value = 0.35f;
+                    left_slider->on_change = [](float v){ std::println("[UI] Left slider: {:.2f}", v); };
 
-                    // Add a big panel with border and background
-                    auto* big_panel = root.add_new<engi::ui::UIPanel>();
-                    big_panel->size = {620.0f, 320.0f};
-                    big_panel->draw_background = true;
-                    big_panel->bg_color = {25, 25, 40, 220};
-                    big_panel->draw_border = true;
-                    big_panel->border_color = {120, 120, 150, 255};
-                    big_panel->layout = engi::ui::Layout::Horizontal;
-                    big_panel->padding = 8.0f;
-                    big_panel->spacing = 8.0f;
+                    auto* left_more_btn = left_panel->add_new<engi::ui::UIButton>();
+                    left_more_btn->label = L"More";
+                    left_more_btn->size = {92.0f, 20.0f};
+                    left_more_btn->on_click = [](){ std::println("[UI] Left more"); };
 
-                    // First child panel
-                    auto* child1 = big_panel->add_new<engi::ui::UIPanel>();
-                    child1->size = {296.0f, 296.0f};
-                    child1->draw_background = true;
-                    child1->bg_color = {40, 40, 55, 220};
-                    child1->draw_border = true;
-                    child1->border_color = {100, 100, 130, 255};
-                    child1->layout = engi::ui::Layout::Vertical;
-                    child1->padding = 6.0f;
-                    child1->spacing = 6.0f;
+                    auto* right_panel = main_panel->add_new<engi::ui::UIPanel>();
+                    right_panel->size = {100.0f, 100.0f};
+                    right_panel->layout = engi::ui::Layout::Vertical;
+                    right_panel->padding = 4.0f;
+                    right_panel->spacing = 4.0f;
+                    right_panel->draw_background = true;
+                    right_panel->bg_color = {38, 38, 58, 220};
+                    right_panel->draw_border = true;
+                    right_panel->border_color = {100, 100, 130, 255};
+                    right_panel->scrollable = true;
 
-                    auto* c1_label = child1->add_new<engi::ui::UILabel>();
-                    c1_label->text = L"Panel A";
-                    c1_label->size = {140.0f, 18.0f};
-                    c1_label->color = {220,220,220,255};
+                    auto* right_label = right_panel->add_new<engi::ui::UILabel>();
+                    right_label->text = L"Right";
+                    right_label->size = {80.0f, 16.0f};
 
-                    auto* c1_btn = child1->add_new<engi::ui::UIButton>();
-                    c1_btn->label = L"A Button";
-                    c1_btn->size = {100.0f, 20.0f};
-                    c1_btn->on_click = [](){ std::println("[UI] A Button clicked"); };
+                    auto* check = right_panel->add_new<engi::ui::UICheckbox>();
+                    check->label = L"On";
+                    check->size = {92.0f, 18.0f};
+                    check->checked = true;
+                    check->on_change = [](bool v){ std::println("[UI] Checkbox: {}", v); };
 
-                    // Second child panel
-                    auto* child2 = big_panel->add_new<engi::ui::UIPanel>();
-                    child2->size = {296.0f, 296.0f};
-                    child2->draw_background = true;
-                    child2->bg_color = {40, 40, 55, 220};
-                    child2->draw_border = true;
-                    child2->border_color = {100, 100, 130, 255};
-                    child2->layout = engi::ui::Layout::Vertical;
-                    child2->padding = 6.0f;
-                    child2->spacing = 6.0f;
+                    auto* input = right_panel->add_new<engi::ui::UITextInput>();
+                    input->size = {92.0f, 20.0f};
+                    input->text = L"Input";
+                    input->on_change = [](const std::wstring& text)
+                    {
+                        std::println("[UI] Input size: {}", text.size());
+                    };
 
-                    auto* c2_label = child2->add_new<engi::ui::UILabel>();
-                    c2_label->text = L"Panel B";
-                    c2_label->size = {140.0f, 18.0f};
-                    c2_label->color = {220,220,220,255};
+                    auto* dropdown = right_panel->add_new<engi::ui::UIDropdown>();
+                    dropdown->size = {92.0f, 20.0f};
+                    dropdown->items = {L"One", L"Two", L"Three"};
+                    dropdown->selected = 0;
+                    dropdown->on_change = [](int idx){ std::println("[UI] Dropdown: {}", idx); };
 
-                    auto* c2_btn = child2->add_new<engi::ui::UIButton>();
-                    c2_btn->label = L"B Button";
-                    c2_btn->size = {100.0f, 20.0f};
-                    c2_btn->on_click = [](){ std::println("[UI] B Button clicked"); };
+                    auto* dd_btn1 = right_panel->add_new<engi::ui::UIButton>();
+                    dd_btn1->label = L"DD Btn 1";
+                    dd_btn1->size = {92.0f, 20.0f};
+                    dd_btn1->on_click = [](){ std::println("[UI] DD Btn 1"); };
+
+                    auto* dd_btn2 = right_panel->add_new<engi::ui::UIButton>();
+                    dd_btn2->label = L"DD Btn 2";
+                    dd_btn2->size = {92.0f, 20.0f};
+                    dd_btn2->on_click = [](){ std::println("[UI] DD Btn 2"); };
+
+                    auto* dd_btn3 = right_panel->add_new<engi::ui::UIButton>();
+                    dd_btn3->label = L"DD Btn 3";
+                    dd_btn3->size = {92.0f, 20.0f};
+                    dd_btn3->on_click = [](){ std::println("[UI] DD Btn 3"); };
+
+                    auto* text_area = root.add_new<engi::ui::UITextArea>();
+                    text_area->size = {220.0f, 90.0f};
+                    text_area->text = L"TextArea\nType here";
+                    text_area->on_change = [](const std::wstring& text)
+                    {
+                        std::println("[UI] TextArea size: {}", text.size());
+                    };
 
                     std::println("[INFO] UI system initialized");
                 }
@@ -476,15 +469,6 @@ namespace TestCube
         vkCmdBindVertexBuffers(cmd, 0, 1, &vb_dynamic, &offset);
         vkCmdDrawIndexed(cmd, g_index_count, 1, 0, 0, 0);
 
-        //g_overlay.start_draw_2d(cmd);
-        //g_overlay.draw(cmd, g_geo_buffer, full_rect);
-
-        //g_overlay.start_draw_2d_wire(cmd);
-        //g_overlay.draw(cmd, g_geo_wire_buffer, full_rect);
-
-        //g_overlay.start_text_draw(cmd);
-        //g_overlay.draw(cmd, g_text_buffer, full_rect);
-
         engi::vk::draw_end(cmd);
 
         engi::vk::draw_start(cmd, full_rect, clear_color, false, ENABLE_UI_MSAA, 
@@ -500,9 +484,6 @@ namespace TestCube
             return;
         g_counter_label = nullptr;
         g_ui = {};
-        g_geo_buffer = {};
-        g_geo_wire_buffer = {};
-        g_text_buffer = {};
         g_overlay = {};
         g_font_atlas = {};
 

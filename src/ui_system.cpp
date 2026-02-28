@@ -1,6 +1,7 @@
 #include "ui_system.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <print>
 
 namespace engi::ui
@@ -64,6 +65,131 @@ namespace engi::ui
         return out;
     }
 
+    static auto effective_font(const UIElement& el, const DrawContext& ctx) -> vk::FontId
+    {
+        if (el.font.ptr)
+        {
+            return el.font;
+        }
+        return ctx.default_font;
+    }
+
+    static auto effective_font_atlas(const UIElement& el, const DrawContext& ctx) -> const vk::IFontAtlas*
+    {
+        return effective_font(el, ctx).ptr;
+    }
+
+    static auto effective_text_buffer(UIElement& el, DrawContext& ctx) -> vk::TextBuffer*
+    {
+        if (!ctx.resolve_text_buffer)
+        {
+            return nullptr;
+        }
+        auto font = effective_font(el, ctx);
+        if (!font.ptr)
+        {
+            return nullptr;
+        }
+        return ctx.resolve_text_buffer(font);
+    }
+
+    static auto glyph_advance(const vk::IFontAtlas* font_atlas, wchar_t ch) -> float
+    {
+        if (!font_atlas)
+        {
+            return 10.0f;
+        }
+
+        if (auto glyph = font_atlas->get_glyph(static_cast<int>(ch)); glyph)
+        {
+            return static_cast<float>(glyph->advance);
+        }
+
+        auto one = std::wstring_view{&ch, 1};
+        return static_cast<float>(font_atlas->calculate_line_width(one));
+    }
+
+    static auto measure_prefix_width(std::wstring_view text, uint32_t cursor, const vk::IFontAtlas* font_atlas) -> float
+    {
+        auto width = 0.0f;
+        auto end = std::min(cursor, static_cast<uint32_t>(text.size()));
+        for (uint32_t i = 0; i < end; i++)
+        {
+            auto ch = text[i];
+            if (ch == L'\n')
+            {
+                break;
+            }
+            width += glyph_advance(font_atlas, ch);
+        }
+        return width;
+    }
+
+    static auto find_cursor_in_line(std::wstring_view line, float local_x, const vk::IFontAtlas* font_atlas) -> uint32_t
+    {
+        if (local_x <= 0.0f)
+        {
+            return 0;
+        }
+
+        auto pen_x = 0.0f;
+        for (uint32_t i = 0; i < static_cast<uint32_t>(line.size()); i++)
+        {
+            auto advance = glyph_advance(font_atlas, line[i]);
+            auto split = pen_x + advance * 0.5f;
+            if (local_x < split)
+            {
+                return i;
+            }
+            pen_x += advance;
+        }
+
+        return static_cast<uint32_t>(line.size());
+    }
+
+    static auto find_cursor_in_multiline_text(std::wstring_view text, const go::vf2& local_pos, const vk::IFontAtlas* font_atlas) -> uint32_t
+    {
+        auto line_h = font_atlas ? static_cast<float>(font_atlas->get_line_height()) : 16.0f;
+        auto text_x = local_pos[0] - 4.0f;
+        auto text_y = local_pos[1] - 4.0f;
+
+        if (text_y < 0.0f)
+        {
+            text_y = 0.0f;
+        }
+
+        auto target_line = static_cast<uint32_t>(std::floor(text_y / std::max(1.0f, line_h)));
+
+        auto line_start = uint32_t{0};
+        auto current_line = uint32_t{0};
+
+        for (uint32_t i = 0; i <= static_cast<uint32_t>(text.size()); i++)
+        {
+            auto is_line_end = i == static_cast<uint32_t>(text.size()) || text[i] == L'\n';
+            if (!is_line_end)
+            {
+                continue;
+            }
+
+            if (current_line == target_line)
+            {
+                auto line = std::wstring_view{text.data() + line_start, i - line_start};
+                auto in_line = find_cursor_in_line(line, text_x, font_atlas);
+                return line_start + in_line;
+            }
+
+            if (i == static_cast<uint32_t>(text.size()))
+            {
+                return static_cast<uint32_t>(text.size());
+            }
+
+            current_line++;
+            line_start = i + 1;
+        }
+
+        return static_cast<uint32_t>(text.size());
+    }
+
     // ===== UIElement =====
 
     UIElement::UIElement()
@@ -81,10 +207,14 @@ namespace engi::ui
     auto UILabel::draw(DrawContext& ctx) -> void
     {
         if (!visible) return;
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
+        if (!text_buf || !font_atlas) return;
+
         auto abs_pos = ctx.origin + position;
-        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
+        auto font_h = static_cast<float>(font_atlas->get_x_height());
         auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline: center x-height inside element
-        ctx.text.add(text, {abs_pos[0], text_y}, color);
+        text_buf->add(text, {abs_pos[0], text_y}, color);
     }
 
     // ===== UIButton =====
@@ -123,17 +253,22 @@ namespace engi::ui
     auto UIButton::draw(DrawContext& ctx) -> void
     {
         if (!visible) return;
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
         auto& col = m_pressed ? color_pressed : (m_hovered ? color_hover : color_normal);
         ctx.geo.add_rect(abs_pos, size, col);
         ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
 
-        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_cap_height()) : 12.0f;
-        auto text_w = ctx.font ? static_cast<float>(ctx.font->calculate_line_width(label)) : 0.0f;
+        auto font_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
+        auto text_w = font_atlas ? static_cast<float>(font_atlas->calculate_line_width(label)) : 0.0f;
         auto text_x = std::floor(abs_pos[0] + (size[0] - text_w) * 0.5f);
         auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
-        ctx.text.add(label, {text_x, text_y}, text_color);
+        if (text_buf)
+        {
+            text_buf->add(label, {text_x, text_y}, text_color);
+        }
     }
 
     // ===== UITextInput =====
@@ -141,6 +276,8 @@ namespace engi::ui
     auto UITextInput::on_event(UIEvent& ev) -> bool
     {
         if (!visible || !enabled) return false;
+
+        m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
 
         auto local = go::vf2{ev.mouse_pos[0] - position[0], ev.mouse_pos[1] - position[1]};
         auto inside = point_in_rect(local, {0, 0}, size);
@@ -150,6 +287,8 @@ namespace engi::ui
             m_focused = inside;
             if (inside)
             {
+                auto x = local[0] - 4.0f;
+                m_cursor = find_cursor_in_line(text, x, nullptr);
                 ev.consumed = true;
                 return true;
             }
@@ -224,23 +363,28 @@ namespace engi::ui
     auto UITextInput::draw(DrawContext& ctx) -> void
     {
         if (!visible) return;
+        m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
         ctx.geo.add_rect(abs_pos, size, bg_color);
         ctx.wire.add_rect(abs_pos, size, m_focused ? go::vu4{120, 120, 200, 255} : border_color);
 
-        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
-        auto advance = ctx.font ? static_cast<float>(ctx.font->get_line_height()) : 10.0f;
+        auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
         auto text_x = abs_pos[0] + 4.0f;
-        auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f); // baseline centered using x-height
-        ctx.text.add(text, {text_x, text_y}, text_color);
+        auto text_y = std::floor(abs_pos[1] + (size[1] + cap_h) * 0.5f);
+        if (text_buf)
+        {
+            text_buf->add(text, {text_x, text_y}, text_color);
+        }
 
         if (m_focused)
         {
-            auto cursor_x = text_x + static_cast<float>(m_cursor) * advance;
+            auto cursor_x = text_x + measure_prefix_width(text, m_cursor, font_atlas);
             ctx.geo.add_rect(
-                go::vf2{cursor_x, abs_pos[1] + 3.0f},
-                go::vf2{2.0f, size[1] - 6.0f},
+                go::vf2{cursor_x, text_y - cap_h},
+                go::vf2{2.0f, cap_h},
                 cursor_color
             );
         }
@@ -257,6 +401,8 @@ namespace engi::ui
     {
         if (!visible || !enabled) return false;
 
+        m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
+
         auto local = go::vf2{ev.mouse_pos[0] - position[0], ev.mouse_pos[1] - position[1]};
         auto inside = point_in_rect(local, {0, 0}, size);
 
@@ -265,6 +411,7 @@ namespace engi::ui
             m_focused = inside;
             if (inside)
             {
+                m_cursor = find_cursor_in_multiline_text(text, local, nullptr);
                 ev.consumed = true;
                 return true;
             }
@@ -347,41 +494,45 @@ namespace engi::ui
     auto UITextArea::draw(DrawContext& ctx) -> void
     {
         if (!visible) return;
+        m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
         ctx.geo.add_rect(abs_pos, size, bg_color);
         ctx.wire.add_rect(abs_pos, size, m_focused ? go::vu4{120, 120, 200, 255} : border_color);
 
-        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
-        auto line_h = ctx.font ? static_cast<float>(ctx.font->get_line_height()) : 16.0f;
-        auto advance = ctx.font ? static_cast<float>(ctx.font->get_line_height()) : 10.0f;
+        auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
+        auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
+        auto line_h = font_atlas ? static_cast<float>(font_atlas->get_line_height()) : 16.0f;
         auto text_x = abs_pos[0] + 4.0f;
         // baseline for first line: top padding + x-height so that glyphs sit within padding
         auto text_y = std::floor(abs_pos[1] + 4.0f + font_h);
-        ctx.text.add(text, {text_x, text_y}, text_color);
+        if (text_buf)
+        {
+            text_buf->add(text, {text_x, text_y}, text_color);
+        }
 
         if (m_focused)
         {
-            // Count lines and columns up to cursor
-            uint32_t line = 0;
-            uint32_t col = 0;
-            for (uint32_t i = 0; i < m_cursor && i < text.size(); i++)
+            auto cursor_x = text_x;
+            auto cursor_baseline = text_y;
+            for (uint32_t i = 0; i < m_cursor; i++)
             {
                 if (text[i] == L'\n')
                 {
-                    line++;
-                    col = 0;
+                    cursor_x = text_x;
+                    cursor_baseline += line_h;
                 }
                 else
                 {
-                    col++;
+                    cursor_x += glyph_advance(font_atlas, text[i]);
                 }
             }
-            auto cursor_x = text_x + static_cast<float>(col) * advance;
-            auto cursor_y = abs_pos[1] + 3.0f + static_cast<float>(line) * line_h;
+
             ctx.geo.add_rect(
-                go::vf2{cursor_x, cursor_y},
-                go::vf2{2.0f, line_h},
+                go::vf2{cursor_x, cursor_baseline - cap_h},
+                go::vf2{2.0f, cap_h},
                 cursor_color
             );
         }
@@ -470,6 +621,8 @@ namespace engi::ui
     auto UICheckbox::draw(DrawContext& ctx) -> void
     {
         if (!visible) return;
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + position;
         auto box_sz = go::vf2{size[1], size[1]};
 
@@ -488,10 +641,13 @@ namespace engi::ui
 
         if (!label.empty())
         {
-            auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
+            auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
             auto text_x = abs_pos[0] + box_sz[0] + 6.0f;
             auto text_y = std::floor(abs_pos[1] + (box_sz[1] + font_h) * 0.5f); // baseline centered using x-height
-            ctx.text.add(label, {text_x, text_y}, text_color);
+            if (text_buf)
+            {
+                text_buf->add(label, {text_x, text_y}, text_color);
+            }
         }
     }
 
@@ -551,9 +707,11 @@ namespace engi::ui
     auto UIDropdown::draw(DrawContext& ctx) -> void
     {
         if (!visible) return;
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
-        auto font_h = ctx.font ? static_cast<float>(ctx.font->get_x_height()) : 12.0f;
+        auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
 
         ctx.geo.add_rect(abs_pos, size, bg_color);
         ctx.wire.add_rect(abs_pos, size, go::vu4{100, 100, 130, 255});
@@ -561,13 +719,19 @@ namespace engi::ui
         if (selected >= 0 && selected < static_cast<int>(items.size()))
         {
             auto text_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
-            ctx.text.add(items[selected], {abs_pos[0] + 6.0f, text_y}, text_color);
+            if (text_buf)
+            {
+                text_buf->add(items[selected], {abs_pos[0] + 6.0f, text_y}, text_color);
+            }
         }
 
         // Draw arrow indicator
         auto arrow_x = abs_pos[0] + size[0] - 16.0f;
         auto arrow_y = std::floor(abs_pos[1] + (size[1] + font_h) * 0.5f);
-        ctx.text.add(m_open ? L"\x25B2" : L"\x25BC", {arrow_x, arrow_y}, text_color);
+        if (text_buf)
+        {
+            text_buf->add(m_open ? L"\x25B2" : L"\x25BC", {arrow_x, arrow_y}, text_color);
+        }
 
         if (m_open)
         {
@@ -579,7 +743,10 @@ namespace engi::ui
                 ctx.geo.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, col);
                 ctx.wire.add_rect(go::vf2{abs_pos[0], iy}, go::vf2{size[0], item_height}, go::vu4{80, 80, 110, 255});
                 auto item_y = std::floor(iy + (item_height + font_h) * 0.5f);
-                ctx.text.add(items[i], go::vf2{abs_pos[0] + 6.0f, item_y}, text_color);
+                if (text_buf)
+                {
+                    text_buf->add(items[i], go::vf2{abs_pos[0] + 6.0f, item_y}, text_color);
+                }
             }
         }
     }
@@ -746,24 +913,44 @@ namespace engi::ui
                 return false;
             }
 
-            auto text_res = vk::TextBuffer::create(m_font);
-            if (!text_res)
-            {
-                std::println("[ERROR] UISystem: failed to create panel TextBuffer");
-                return false;
-            }
-
             m_panel_buffers.push_back(
                 PanelDrawBuffers
                 {
                     .geo = std::move(geo_res.value()),
-                    .wire = std::move(wire_res.value()),
-                    .text = std::move(text_res.value())
+                    .wire = std::move(wire_res.value())
                 }
             );
         }
 
         return true;
+    }
+
+    auto UISystem::ensure_panel_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*
+    {
+        if (!font.ptr)
+        {
+            return nullptr;
+        }
+
+        auto font_index = static_cast<size_t>(font.font_index);
+        if (panel_buf.text.size() <= font_index)
+        {
+            panel_buf.text.resize(font_index + 1);
+        }
+
+        auto& text_entry = panel_buf.text[font_index];
+        if (!text_entry.has_value())
+        {
+            auto text_res = vk::TextBuffer::create(font);
+            if (!text_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel TextBuffer for font {}", font.font_index);
+                return nullptr;
+            }
+            text_entry = std::move(text_res.value());
+        }
+
+        return &text_entry.value();
     }
 
     auto UISystem::build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void
@@ -777,7 +964,13 @@ namespace engi::ui
         panel_buf.view = panel_clip;
         panel_buf.geo.clear();
         panel_buf.wire.clear();
-        panel_buf.text.clear();
+        for (auto& text_buf : panel_buf.text)
+        {
+            if (text_buf.has_value())
+            {
+                text_buf->clear();
+            }
+        }
 
         if (panel_clip.extent.width == 0 || panel_clip.extent.height == 0)
         {
@@ -791,8 +984,11 @@ namespace engi::ui
         {
             .geo = panel_buf.geo,
             .wire = panel_buf.wire,
-            .text = panel_buf.text,
-            .font = m_font.ptr,
+            .resolve_text_buffer = [this, &panel_buf](vk::FontId font) -> vk::TextBuffer*
+            {
+                return ensure_panel_text_buffer(panel_buf, font);
+            },
+            .default_font = m_font,
             .origin = child_origin - clip_offset,
             .clip_pos = clip_offset,
             .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
@@ -933,11 +1129,16 @@ namespace engi::ui
                 }
             }
 
-            if (panel_buf.text.vertex_count() > 0)
+            for (auto& text_buf : panel_buf.text)
             {
-                if (auto r = panel_buf.text.upload(cmd); r)
+                if (!text_buf.has_value() || text_buf->vertex_count() == 0)
                 {
-                    vk::add_vertex_buffer_write_barrier(panel_buf.text.vertex_buffer());
+                    continue;
+                }
+
+                if (auto r = text_buf->upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(text_buf->vertex_buffer());
                 }
             }
         }
@@ -963,7 +1164,14 @@ namespace engi::ui
             overlay.draw(cmd, panel_buf.wire, panel_buf.view);
 
             overlay.start_text_draw(cmd);
-            overlay.draw(cmd, panel_buf.text, panel_buf.view);
+            for (const auto& text_buf : panel_buf.text)
+            {
+                if (!text_buf.has_value() || text_buf->vertex_count() == 0)
+                {
+                    continue;
+                }
+                overlay.draw(cmd, text_buf.value(), panel_buf.view);
+            }
         }
 
         vk::view_set(cmd, viewport);
