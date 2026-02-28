@@ -190,8 +190,59 @@ namespace engi::ui
         return static_cast<uint32_t>(text.size());
     }
 
+    static auto multiline_cursor_position(std::wstring_view text, uint32_t cursor, const vk::IFontAtlas* font_atlas) -> go::vf2
+    {
+        auto line_h = font_atlas ? static_cast<float>(font_atlas->get_line_height()) : 16.0f;
+        auto x = 0.0f;
+        auto y = 0.0f;
+        auto end = std::min(cursor, static_cast<uint32_t>(text.size()));
+
+        for (uint32_t i = 0; i < end; i++)
+        {
+            if (text[i] == L'\n')
+            {
+                x = 0.0f;
+                y += line_h;
+            }
+            else
+            {
+                x += glyph_advance(font_atlas, text[i]);
+            }
+        }
+
+        return {x, y};
+    }
+
+    static auto multiline_content_size(std::wstring_view text, const vk::IFontAtlas* font_atlas) -> go::vf2
+    {
+        auto line_h = font_atlas ? static_cast<float>(font_atlas->get_line_height()) : 16.0f;
+        auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
+        auto line_w = 0.0f;
+        auto max_w = 0.0f;
+        auto lines = 1u;
+
+        for (auto ch : text)
+        {
+            if (ch == L'\n')
+            {
+                max_w = std::max(max_w, line_w);
+                line_w = 0.0f;
+                lines++;
+            }
+            else
+            {
+                line_w += glyph_advance(font_atlas, ch);
+            }
+        }
+        max_w = std::max(max_w, line_w);
+
+        auto content_h = static_cast<float>(lines - 1) * line_h + cap_h;
+        return {max_w, content_h};
+    }
+
     static constexpr auto k_panel_scrollbar_width = 4.0f;
     static constexpr auto k_panel_scrollbar_min_thumb_height = 12.0f;
+    static constexpr auto k_text_edit_padding = 4.0f;
 
     // ===== UIElement =====
 
@@ -368,15 +419,15 @@ namespace engi::ui
     {
         if (!visible) return;
         m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
-        auto* text_buf = effective_text_buffer(*this, ctx);
         auto* font_atlas = effective_font_atlas(*this, ctx);
+        auto font = effective_font(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
         ctx.geo.add_rect(abs_pos, size, bg_color);
         ctx.wire.add_rect(abs_pos, size, m_focused ? go::vu4{120, 120, 200, 255} : border_color);
 
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
-        auto inner_w = std::max(0.0f, size[0] - 8.0f);
+        auto inner_w = std::max(0.0f, size[0] - k_text_edit_padding * 2.0f);
         auto cursor_px = measure_prefix_width(text, m_cursor, font_atlas);
         auto text_w = measure_prefix_width(text, static_cast<uint32_t>(text.size()), font_atlas);
         auto max_scroll_x = std::max(0.0f, text_w - inner_w);
@@ -395,11 +446,34 @@ namespace engi::ui
         }
         m_scroll_x = std::clamp(m_scroll_x, 0.0f, max_scroll_x);
 
-        auto text_x = abs_pos[0] + 4.0f - m_scroll_x;
+        auto text_x = abs_pos[0] + k_text_edit_padding - m_scroll_x;
         auto text_y = std::floor(abs_pos[1] + (size[1] + cap_h) * 0.5f);
-        if (text_buf)
+
+        auto text_drawn = false;
+        if (ctx.resolve_clipped_text_buffer && font.ptr)
         {
-            text_buf->add(text, {text_x, text_y}, text_color);
+            auto content_pos = abs_pos;
+            auto content_size = size;
+
+            auto content_fb_pos = content_pos + ctx.clip_pos;
+            auto [clip_pos, clip_size] = clip_rect(content_fb_pos, content_size, ctx.clip_pos, ctx.clip_size);
+            if (clip_size[0] > 0.0f && clip_size[1] > 0.0f)
+            {
+                auto scissor = to_rect(clip_pos, clip_size);
+                if (auto* clipped_text = ctx.resolve_clipped_text_buffer(font, scissor); clipped_text)
+                {
+                    clipped_text->add(text, {text_x, text_y}, text_color);
+                    text_drawn = true;
+                }
+            }
+        }
+
+        if (!text_drawn)
+        {
+            if (auto* text_buf = effective_text_buffer(*this, ctx); text_buf)
+            {
+                text_buf->add(text, {text_x, text_y}, text_color);
+            }
         }
 
         if (m_focused)
@@ -425,16 +499,27 @@ namespace engi::ui
         if (!visible || !enabled) return false;
 
         m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
+        m_scroll_x = std::max(0.0f, m_scroll_x);
+        m_scroll_y = std::max(0.0f, m_scroll_y);
 
         auto local = go::vf2{ev.mouse_pos[0] - position[0], ev.mouse_pos[1] - position[1]};
         auto inside = point_in_rect(local, {0, 0}, size);
+
+        if (ev.type == EventType::Scroll && inside)
+        {
+            m_scroll_x = std::max(0.0f, m_scroll_x - ev.scroll_dx * 20.0f);
+            m_scroll_y = std::max(0.0f, m_scroll_y - ev.scroll_dy * 20.0f);
+            ev.consumed = true;
+            return true;
+        }
 
         if (ev.type == EventType::MousePress && ev.button == 0)
         {
             m_focused = inside;
             if (inside)
             {
-                m_cursor = find_cursor_in_multiline_text(text, local, nullptr);
+                auto content_local = go::vf2{local[0] + m_scroll_x, local[1] + m_scroll_y};
+                m_cursor = find_cursor_in_multiline_text(text, content_local, nullptr);
                 ev.consumed = true;
                 return true;
             }
@@ -518,8 +603,10 @@ namespace engi::ui
     {
         if (!visible) return;
         m_cursor = std::min(m_cursor, static_cast<uint32_t>(text.size()));
-        auto* text_buf = effective_text_buffer(*this, ctx);
+        m_scroll_x = std::max(0.0f, m_scroll_x);
+        m_scroll_y = std::max(0.0f, m_scroll_y);
         auto* font_atlas = effective_font_atlas(*this, ctx);
+        auto font = effective_font(*this, ctx);
         auto abs_pos = ctx.origin + position;
 
         ctx.geo.add_rect(abs_pos, size, bg_color);
@@ -528,30 +615,78 @@ namespace engi::ui
         auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
         auto line_h = font_atlas ? static_cast<float>(font_atlas->get_line_height()) : 16.0f;
-        auto text_x = abs_pos[0] + 4.0f;
-        // baseline for first line: top padding + x-height so that glyphs sit within padding
-        auto text_y = std::floor(abs_pos[1] + 4.0f + font_h);
-        if (text_buf)
+        auto inner_w = std::max(0.0f, size[0] - k_text_edit_padding * 2.0f);
+        auto inner_h = std::max(0.0f, size[1] - k_text_edit_padding * 2.0f);
+
+        auto cursor_pos = multiline_cursor_position(text, m_cursor, font_atlas);
+        auto content_size = multiline_content_size(text, font_atlas);
+
+        auto max_scroll_x = std::max(0.0f, content_size[0] - inner_w);
+        auto max_scroll_y = std::max(0.0f, content_size[1] - inner_h);
+
+        auto cursor_margin = 2.0f;
+        auto min_visible_x = cursor_margin;
+        auto max_visible_x = std::max(min_visible_x, inner_w - cursor_margin - 2.0f);
+        auto cursor_view_x = cursor_pos[0] - m_scroll_x;
+        if (cursor_view_x > max_visible_x)
         {
-            text_buf->add(text, {text_x, text_y}, text_color);
+            m_scroll_x = cursor_pos[0] - max_visible_x;
+        }
+        else if (cursor_view_x < min_visible_x)
+        {
+            m_scroll_x = cursor_pos[0] - min_visible_x;
+        }
+
+        auto min_visible_y = cursor_margin;
+        auto max_visible_y = std::max(min_visible_y, inner_h - cursor_margin - cap_h);
+        auto cursor_view_y = cursor_pos[1] - m_scroll_y;
+        if (cursor_view_y > max_visible_y)
+        {
+            m_scroll_y = cursor_pos[1] - max_visible_y;
+        }
+        else if (cursor_view_y < min_visible_y)
+        {
+            m_scroll_y = cursor_pos[1] - min_visible_y;
+        }
+
+        m_scroll_x = std::clamp(m_scroll_x, 0.0f, max_scroll_x);
+        m_scroll_y = std::clamp(m_scroll_y, 0.0f, max_scroll_y);
+
+        auto text_x = abs_pos[0] + k_text_edit_padding - m_scroll_x;
+        // baseline for first line: top padding + x-height so that glyphs sit within padding
+        auto text_y = std::floor(abs_pos[1] + k_text_edit_padding + font_h - m_scroll_y);
+
+        auto text_drawn = false;
+        if (ctx.resolve_clipped_text_buffer && font.ptr)
+        {
+            auto content_pos = abs_pos;
+            auto content_size = size;
+
+            auto content_fb_pos = content_pos + ctx.clip_pos;
+            auto [clip_pos, clip_size] = clip_rect(content_fb_pos, content_size, ctx.clip_pos, ctx.clip_size);
+            if (clip_size[0] > 0.0f && clip_size[1] > 0.0f)
+            {
+                auto scissor = to_rect(clip_pos, clip_size);
+                if (auto* clipped_text = ctx.resolve_clipped_text_buffer(font, scissor); clipped_text)
+                {
+                    clipped_text->add(text, {text_x, text_y}, text_color);
+                    text_drawn = true;
+                }
+            }
+        }
+
+        if (!text_drawn)
+        {
+            if (auto* text_buf = effective_text_buffer(*this, ctx); text_buf)
+            {
+                text_buf->add(text, {text_x, text_y}, text_color);
+            }
         }
 
         if (m_focused)
         {
-            auto cursor_x = text_x;
-            auto cursor_baseline = text_y;
-            for (uint32_t i = 0; i < m_cursor; i++)
-            {
-                if (text[i] == L'\n')
-                {
-                    cursor_x = text_x;
-                    cursor_baseline += line_h;
-                }
-                else
-                {
-                    cursor_x += glyph_advance(font_atlas, text[i]);
-                }
-            }
+            auto cursor_x = text_x + cursor_pos[0];
+            auto cursor_baseline = text_y + cursor_pos[1];
 
             ctx.geo.add_rect(
                 go::vf2{cursor_x, cursor_baseline - cap_h},
@@ -862,6 +997,35 @@ namespace engi::ui
             local[1] - scroll_offset[1]
         };
 
+        auto is_pointer_event =
+            ev.type == EventType::MouseMove ||
+            ev.type == EventType::MousePress ||
+            ev.type == EventType::MouseRelease ||
+            ev.type == EventType::Scroll;
+
+        if (is_pointer_event)
+        {
+            for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+            {
+                if (!(*it)->visible)
+                {
+                    continue;
+                }
+
+                auto* dropdown = dynamic_cast<UIDropdown*>(it->get());
+                if (!dropdown || !dropdown->is_open())
+                {
+                    continue;
+                }
+
+                if ((*it)->on_event(child_ev))
+                {
+                    ev.consumed = child_ev.consumed;
+                    return true;
+                }
+            }
+        }
+
         // Propagate in reverse order (top-most child = last in list gets first chance)
         for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
         {
@@ -990,11 +1154,35 @@ namespace engi::ui
                 return false;
             }
 
+            auto dropdown_geo_res = vk::GeometryBuffer2D::create();
+            if (!dropdown_geo_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel dropdown GeometryBuffer2D");
+                return false;
+            }
+
+            auto dropdown_wire_res = vk::GeometryBuffer2DWire::create();
+            if (!dropdown_wire_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel dropdown GeometryBuffer2DWire");
+                return false;
+            }
+
+            auto scrollbar_geo_res = vk::GeometryBuffer2D::create();
+            if (!scrollbar_geo_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel scrollbar GeometryBuffer2D");
+                return false;
+            }
+
             m_panel_buffers.push_back(
                 PanelDrawBuffers
                 {
                     .geo = std::move(geo_res.value()),
-                    .wire = std::move(wire_res.value())
+                    .wire = std::move(wire_res.value()),
+                    .dropdown_geo = std::move(dropdown_geo_res.value()),
+                    .dropdown_wire = std::move(dropdown_wire_res.value()),
+                    .scrollbar_geo = std::move(scrollbar_geo_res.value())
                 }
             );
         }
@@ -1030,6 +1218,64 @@ namespace engi::ui
         return &text_entry.value();
     }
 
+    auto UISystem::ensure_panel_clipped_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*
+    {
+        if (!font.ptr)
+        {
+            return nullptr;
+        }
+
+        auto entry_id = panel_buf.clipped_text_used++;
+        if (panel_buf.clipped_text.size() <= entry_id)
+        {
+            panel_buf.clipped_text.emplace_back();
+        }
+
+        auto& entry = panel_buf.clipped_text[entry_id];
+        entry.scissor = scissor;
+
+        if (!entry.text.has_value() || entry.text->font_index() != font.font_index)
+        {
+            auto text_res = vk::TextBuffer::create(font);
+            if (!text_res)
+            {
+                std::println("[ERROR] UISystem: failed to create clipped TextBuffer for font {}", font.font_index);
+                return nullptr;
+            }
+            entry.text = std::move(text_res.value());
+        }
+
+        return &entry.text.value();
+    }
+
+    auto UISystem::ensure_panel_dropdown_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*
+    {
+        if (!font.ptr)
+        {
+            return nullptr;
+        }
+
+        auto font_index = static_cast<size_t>(font.font_index);
+        if (panel_buf.dropdown_text.size() <= font_index)
+        {
+            panel_buf.dropdown_text.resize(font_index + 1);
+        }
+
+        auto& text_entry = panel_buf.dropdown_text[font_index];
+        if (!text_entry.has_value())
+        {
+            auto text_res = vk::TextBuffer::create(font);
+            if (!text_res)
+            {
+                std::println("[ERROR] UISystem: failed to create panel dropdown TextBuffer for font {}", font.font_index);
+                return nullptr;
+            }
+            text_entry = std::move(text_res.value());
+        }
+
+        return &text_entry.value();
+    }
+
     auto UISystem::build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void
     {
         panel.apply_layout();
@@ -1042,11 +1288,29 @@ namespace engi::ui
         panel_buf.view = panel_clip;
         panel_buf.geo.clear();
         panel_buf.wire.clear();
+        panel_buf.clipped_text_used = 0;
+        panel_buf.dropdown_geo.clear();
+        panel_buf.dropdown_wire.clear();
+        panel_buf.scrollbar_geo.clear();
         for (auto& text_buf : panel_buf.text)
         {
             if (text_buf.has_value())
             {
                 text_buf->clear();
+            }
+        }
+        for (auto& text_buf : panel_buf.dropdown_text)
+        {
+            if (text_buf.has_value())
+            {
+                text_buf->clear();
+            }
+        }
+        for (auto& clipped : panel_buf.clipped_text)
+        {
+            if (clipped.text.has_value())
+            {
+                clipped.text->clear();
             }
         }
 
@@ -1065,6 +1329,28 @@ namespace engi::ui
             .resolve_text_buffer = [this, &panel_buf](vk::FontId font) -> vk::TextBuffer*
             {
                 return ensure_panel_text_buffer(panel_buf, font);
+            },
+            .resolve_clipped_text_buffer = [this, &panel_buf](vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*
+            {
+                return ensure_panel_clipped_text_buffer(panel_buf, font, scissor);
+            },
+            .default_font = m_font,
+            .origin = child_origin - clip_offset,
+            .clip_pos = clip_offset,
+            .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
+        };
+
+        DrawContext dropdown_ctx
+        {
+            .geo = panel_buf.dropdown_geo,
+            .wire = panel_buf.dropdown_wire,
+            .resolve_text_buffer = [this, &panel_buf](vk::FontId font) -> vk::TextBuffer*
+            {
+                return ensure_panel_dropdown_text_buffer(panel_buf, font);
+            },
+            .resolve_clipped_text_buffer = [](vk::FontId, const VkRect2D&) -> vk::TextBuffer*
+            {
+                return nullptr;
             },
             .default_font = m_font,
             .origin = child_origin - clip_offset,
@@ -1093,7 +1379,21 @@ namespace engi::ui
             }
             else
             {
+                if (dynamic_cast<UIDropdown*>(child.get()))
+                {
+                    continue;
+                }
                 child->draw(panel_ctx);
+            }
+        }
+
+        for (auto& child : panel.children())
+        {
+            if (!child->visible) continue;
+
+            if (dynamic_cast<UIDropdown*>(child.get()))
+            {
+                child->draw(dropdown_ctx);
             }
         }
 
@@ -1110,7 +1410,7 @@ namespace engi::ui
                 auto thumb_y = panel_abs_pos[1] + travel * t;
                 auto thumb_x = panel_abs_pos[0] + panel.size[0] - k_panel_scrollbar_width;
 
-                panel_buf.geo.add_rect(
+                panel_buf.scrollbar_geo.add_rect(
                     go::vf2{thumb_x, thumb_y} - clip_offset,
                     go::vf2{k_panel_scrollbar_width, thumb_h},
                     go::vu4{150, 150, 190, 190}
@@ -1228,6 +1528,33 @@ namespace engi::ui
                 }
             }
 
+            if (panel_buf.dropdown_geo.index_count() > 0)
+            {
+                if (auto r = panel_buf.dropdown_geo.upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(panel_buf.dropdown_geo.vertex_buffer());
+                    vk::add_index_buffer_write_barrier(panel_buf.dropdown_geo.index_buffer());
+                }
+            }
+
+            if (panel_buf.dropdown_wire.index_count() > 0)
+            {
+                if (auto r = panel_buf.dropdown_wire.upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(panel_buf.dropdown_wire.vertex_buffer());
+                    vk::add_index_buffer_write_barrier(panel_buf.dropdown_wire.index_buffer());
+                }
+            }
+
+            if (panel_buf.scrollbar_geo.index_count() > 0)
+            {
+                if (auto r = panel_buf.scrollbar_geo.upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(panel_buf.scrollbar_geo.vertex_buffer());
+                    vk::add_index_buffer_write_barrier(panel_buf.scrollbar_geo.index_buffer());
+                }
+            }
+
             for (auto& text_buf : panel_buf.text)
             {
                 if (!text_buf.has_value() || text_buf->vertex_count() == 0)
@@ -1238,6 +1565,33 @@ namespace engi::ui
                 if (auto r = text_buf->upload(cmd); r)
                 {
                     vk::add_vertex_buffer_write_barrier(text_buf->vertex_buffer());
+                }
+            }
+
+            for (auto& text_buf : panel_buf.dropdown_text)
+            {
+                if (!text_buf.has_value() || text_buf->vertex_count() == 0)
+                {
+                    continue;
+                }
+
+                if (auto r = text_buf->upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(text_buf->vertex_buffer());
+                }
+            }
+
+            for (size_t clipped_id = 0; clipped_id < panel_buf.clipped_text_used; clipped_id++)
+            {
+                auto& clipped = panel_buf.clipped_text[clipped_id];
+                if (!clipped.text.has_value() || clipped.text->vertex_count() == 0)
+                {
+                    continue;
+                }
+
+                if (auto r = clipped.text->upload(cmd); r)
+                {
+                    vk::add_vertex_buffer_write_barrier(clipped.text->vertex_buffer());
                 }
             }
         }
@@ -1255,6 +1609,7 @@ namespace engi::ui
             if (panel_buf.view.extent.width == 0 || panel_buf.view.extent.height == 0) continue;
 
             vk::view_set(cmd, panel_buf.view);
+            vkCmdSetScissor(cmd, 0, 1, &panel_buf.view);
 
             overlay.start_draw_2d(cmd);
             overlay.draw(cmd, panel_buf.geo, panel_buf.view);
@@ -1271,6 +1626,43 @@ namespace engi::ui
                 }
                 overlay.draw(cmd, text_buf.value(), panel_buf.view);
             }
+
+            for (size_t clipped_id = 0; clipped_id < panel_buf.clipped_text_used; clipped_id++)
+            {
+                const auto& clipped = panel_buf.clipped_text[clipped_id];
+                if (!clipped.text.has_value() || clipped.text->vertex_count() == 0)
+                {
+                    continue;
+                }
+
+                vkCmdSetScissor(cmd, 0, 1, &clipped.scissor);
+                overlay.draw(cmd, clipped.text.value(), panel_buf.view);
+            }
+
+            vkCmdSetScissor(cmd, 0, 1, &panel_buf.view);
+
+            overlay.start_draw_2d(cmd);
+            overlay.draw(cmd, panel_buf.dropdown_geo, panel_buf.view);
+
+            overlay.start_draw_2d_wire(cmd);
+            overlay.draw(cmd, panel_buf.dropdown_wire, panel_buf.view);
+
+            overlay.start_text_draw(cmd);
+            for (const auto& text_buf : panel_buf.dropdown_text)
+            {
+                if (!text_buf.has_value() || text_buf->vertex_count() == 0)
+                {
+                    continue;
+                }
+                overlay.draw(cmd, text_buf.value(), panel_buf.view);
+            }
+
+            vkCmdSetScissor(cmd, 0, 1, &panel_buf.view);
+
+            overlay.start_draw_2d(cmd);
+            overlay.draw(cmd, panel_buf.scrollbar_geo, panel_buf.view);
+
+            vkCmdSetScissor(cmd, 0, 1, &panel_buf.view);
         }
 
         vk::view_set(cmd, viewport);

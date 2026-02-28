@@ -54,6 +54,7 @@ namespace engi::ui
         vk::GeometryBuffer2D& geo;
         vk::GeometryBuffer2DWire& wire;
         std::function<vk::TextBuffer*(vk::FontId)> resolve_text_buffer;
+        std::function<vk::TextBuffer*(vk::FontId, const VkRect2D&)> resolve_clipped_text_buffer;
         vk::FontId default_font;
         go::vf2 origin;
         go::vf2 clip_pos;
@@ -170,6 +171,8 @@ namespace engi::ui
     private:
         bool m_focused = false;
         uint32_t m_cursor = 0;
+        float m_scroll_x = 0.0f;
+        float m_scroll_y = 0.0f;
     };
 
     // ===== UISlider =====
@@ -220,6 +223,7 @@ namespace engi::ui
 
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
+        auto is_open() const -> bool { return m_open; }
 
         std::vector<std::wstring> items;
         int selected = -1;
@@ -304,15 +308,31 @@ namespace engi::ui
     private:
         struct PanelDrawBuffers
         {
+            struct ClippedTextDraw
+            {
+                std::optional<vk::TextBuffer> text;
+                VkRect2D scissor = {};
+            };
+
             vk::GeometryBuffer2D geo;
             vk::GeometryBuffer2DWire wire;
             std::vector<std::optional<vk::TextBuffer>> text;
+            std::vector<ClippedTextDraw> clipped_text;
+            size_t clipped_text_used = 0;
+
+            vk::GeometryBuffer2D dropdown_geo;
+            vk::GeometryBuffer2DWire dropdown_wire;
+            std::vector<std::optional<vk::TextBuffer>> dropdown_text;
+
+            vk::GeometryBuffer2D scrollbar_geo;
             VkRect2D view = {};
         };
 
         auto panel_count(const UIPanel& panel) const -> size_t;
         auto ensure_panel_buffers(size_t count) -> bool;
         auto ensure_panel_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*;
+        auto ensure_panel_clipped_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*;
+        auto ensure_panel_dropdown_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*;
         auto build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void;
 
         UIPanel m_root;
