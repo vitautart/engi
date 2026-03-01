@@ -1,8 +1,8 @@
-#include <app.hpp>
+#include <test_engi.hpp>
 
 auto main() -> int
 {
-    auto app = engi::App::create();
+    auto app = engi::TestEngi::create();
     if (!app) return -1;
 
     app->run();

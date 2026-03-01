@@ -33,6 +33,7 @@ static const std::array CPP_FILES =
 {
     "src/main.cpp",
     "src/app.cpp",
+    "src/test_engi.cpp",
     "src/rendering.cpp",
     "src/rendering_overlay.cpp",
     "src/pipeline.cpp",
