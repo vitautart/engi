@@ -241,6 +241,23 @@ namespace engi::ui
     static constexpr auto k_panel_scrollbar_min_thumb_height = 12.0f;
     static constexpr auto k_text_edit_padding = 4.0f;
 
+    static auto should_draw_background(const UIElement& el, const go::vu4& color) -> bool
+    {
+        return el.get_draw_background() || color[3] > 0;
+    }
+
+    static auto draw_element_background(const UIElement& el, DrawContext& ctx, const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void
+    {
+        if (should_draw_background(el, color))
+            ctx.geo.add_rect(pos, size, color);
+    }
+
+    static auto draw_element_border(const UIElement& el, DrawContext& ctx, const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void
+    {
+        if (el.get_draw_border() && color[3] > 0)
+            ctx.wire.add_rect(pos, size, color);
+    }
+
     // ===== UIElement =====
 
     UIElement::UIElement()
@@ -297,6 +314,36 @@ namespace engi::ui
         mark_dirty();
     }
 
+    auto UIElement::set_draw_background(bool v) -> void
+    {
+        if (m_draw_background != v)
+        {
+            m_draw_background = v;
+            mark_dirty();
+        }
+    }
+
+    auto UIElement::set_bg_color(go::vu4 c) -> void
+    {
+        m_bg_color = c;
+        mark_dirty();
+    }
+
+    auto UIElement::set_draw_border(bool v) -> void
+    {
+        if (m_draw_border != v)
+        {
+            m_draw_border = v;
+            mark_dirty();
+        }
+    }
+
+    auto UIElement::set_border_color(go::vu4 c) -> void
+    {
+        m_border_color = c;
+        mark_dirty();
+    }
+
     // ===== UILabel Setters =====
 
     auto UILabel::set_text(std::wstring t) -> void { m_text = std::move(t); mark_dirty(); }
@@ -314,18 +361,14 @@ namespace engi::ui
     // ===== UITextInput Setters =====
 
     auto UITextInput::set_text(std::wstring t) -> void { m_text = std::move(t); m_cursor = std::min(m_cursor, static_cast<uint32_t>(m_text.size())); mark_dirty(); }
-    auto UITextInput::set_bg_color(go::vu4 c) -> void { m_bg_color = c; mark_dirty(); }
     auto UITextInput::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
     auto UITextInput::set_cursor_color(go::vu4 c) -> void { m_cursor_color = c; mark_dirty(); }
-    auto UITextInput::set_border_color(go::vu4 c) -> void { m_border_color = c; mark_dirty(); }
 
     // ===== UITextArea Setters =====
 
     auto UITextArea::set_text(std::wstring t) -> void { m_text = std::move(t); m_cursor = std::min(m_cursor, static_cast<uint32_t>(m_text.size())); mark_dirty(); }
-    auto UITextArea::set_bg_color(go::vu4 c) -> void { m_bg_color = c; mark_dirty(); }
     auto UITextArea::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
     auto UITextArea::set_cursor_color(go::vu4 c) -> void { m_cursor_color = c; mark_dirty(); }
-    auto UITextArea::set_border_color(go::vu4 c) -> void { m_border_color = c; mark_dirty(); }
 
     // ===== UISlider Setters =====
 
@@ -347,7 +390,6 @@ namespace engi::ui
 
     auto UIDropdown::set_items(std::vector<std::wstring> items) -> void { m_items = std::move(items); mark_dirty(); }
     auto UIDropdown::set_selected(int idx) -> void { if (m_selected != idx) { m_selected = idx; mark_dirty(); } }
-    auto UIDropdown::set_bg_color(go::vu4 c) -> void { m_bg_color = c; mark_dirty(); }
     auto UIDropdown::set_hover_color(go::vu4 c) -> void { m_hover_color = c; mark_dirty(); }
     auto UIDropdown::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
 
@@ -365,10 +407,44 @@ namespace engi::ui
             mark_dirty();
         }
     }
-    auto UIPanel::set_draw_background(bool v) -> void { if (m_draw_background != v) { m_draw_background = v; mark_dirty(); } }
-    auto UIPanel::set_bg_color(go::vu4 c) -> void { m_bg_color = c; mark_dirty(); }
-    auto UIPanel::set_draw_border(bool v) -> void { if (m_draw_border != v) { m_draw_border = v; mark_dirty(); } }
-    auto UIPanel::set_border_color(go::vu4 c) -> void { m_border_color = c; mark_dirty(); }
+
+    // ===== UIExpandablePanel Setters =====
+
+    auto UIExpandablePanel::set_header(std::wstring text) -> void { m_header = std::move(text); mark_dirty(); }
+    auto UIExpandablePanel::set_expanded(bool expanded) -> void { if (m_expanded != expanded) { m_expanded = expanded; mark_dirty(); } }
+    auto UIExpandablePanel::set_padding(float p) -> void { if (m_padding != p) { m_padding = p; mark_dirty(); } }
+    auto UIExpandablePanel::set_spacing(float s) -> void { if (m_spacing != s) { m_spacing = s; mark_dirty(); } }
+    auto UIExpandablePanel::set_header_height(float h) -> void
+    {
+        auto clamped_h = std::max(1.0f, h);
+        if (m_header_height != clamped_h)
+        {
+            m_header_height = clamped_h;
+            if (m_folded_height <= 0.0f)
+                m_folded_height = m_header_height;
+            mark_dirty();
+        }
+    }
+    auto UIExpandablePanel::set_expanded_height(float h) -> void
+    {
+        auto clamped_h = std::max(1.0f, h);
+        if (m_expanded_height != clamped_h)
+        {
+            m_expanded_height = clamped_h;
+            mark_dirty();
+        }
+    }
+    auto UIExpandablePanel::set_folded_height(float h) -> void
+    {
+        auto clamped_h = std::max(1.0f, h);
+        if (m_folded_height != clamped_h)
+        {
+            m_folded_height = clamped_h;
+            mark_dirty();
+        }
+    }
+    auto UIExpandablePanel::set_header_bg_color(go::vu4 c) -> void { m_header_bg_color = c; mark_dirty(); }
+    auto UIExpandablePanel::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
 
     // ===== UILabel =====
 
@@ -385,6 +461,8 @@ namespace engi::ui
         if (!text_buf || !font_atlas) return;
 
         auto abs_pos = ctx.origin + m_position;
+        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
+        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
         auto font_h = static_cast<float>(font_atlas->get_x_height());
         auto text_w = static_cast<float>(font_atlas->calculate_line_width(m_text));
         auto text_x = abs_pos[0];
@@ -397,6 +475,13 @@ namespace engi::ui
     }
 
     // ===== UIButton =====
+
+    UIButton::UIButton()
+    {
+        set_draw_background(true);
+        set_draw_border(true);
+        set_border_color({100, 100, 130, 255});
+    }
 
     auto UIButton::on_event(UIEvent& ev) -> bool
     {
@@ -435,8 +520,8 @@ namespace engi::ui
         auto abs_pos = ctx.origin + m_position;
 
         auto& col = m_pressed ? m_color_pressed : (m_hovered ? m_color_hover : m_color_normal);
-        ctx.geo.add_rect(abs_pos, m_size, col);
-        ctx.wire.add_rect(abs_pos, m_size, go::vu4{100, 100, 130, 255});
+        draw_element_background(*this, ctx, abs_pos, m_size, col);
+        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
 
         auto text_pos = centered_single_line_text_pos(abs_pos, m_size, m_label, font_atlas);
         if (text_buf)
@@ -444,6 +529,14 @@ namespace engi::ui
     }
 
     // ===== UITextInput =====
+
+    UITextInput::UITextInput()
+    {
+        set_draw_background(true);
+        set_bg_color({30, 30, 45, 255});
+        set_draw_border(true);
+        set_border_color({80, 80, 110, 255});
+    }
 
     auto UITextInput::on_event(UIEvent& ev) -> bool
     {
@@ -544,8 +637,8 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        ctx.geo.add_rect(abs_pos, m_size, m_bg_color);
-        ctx.wire.add_rect(abs_pos, m_size, m_focused ? go::vu4{120, 120, 200, 255} : m_border_color);
+        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
+        draw_element_border(*this, ctx, abs_pos, m_size, m_focused ? go::vu4{120, 120, 200, 255} : get_border_color());
 
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
         auto inner_w = std::max(0.0f, m_size[0] - k_text_edit_padding * 2.0f);
@@ -576,6 +669,10 @@ namespace engi::ui
     UITextArea::UITextArea()
     {
         m_size = {200.0f, 100.0f};
+        set_draw_background(true);
+        set_bg_color({30, 30, 45, 255});
+        set_draw_border(true);
+        set_border_color({80, 80, 110, 255});
     }
 
     auto UITextArea::on_event(UIEvent& ev) -> bool
@@ -694,8 +791,8 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        ctx.geo.add_rect(abs_pos, m_size, m_bg_color);
-        ctx.wire.add_rect(abs_pos, m_size, m_focused ? go::vu4{120, 120, 200, 255} : m_border_color);
+        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
+        draw_element_border(*this, ctx, abs_pos, m_size, m_focused ? go::vu4{120, 120, 200, 255} : get_border_color());
 
         auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
@@ -771,6 +868,9 @@ namespace engi::ui
         if (!m_visible) return;
         auto abs_pos = ctx.origin + m_position;
 
+        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
+        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
+
         auto track_height = 6.0f;
         auto track_y = abs_pos[1] + (m_size[1] - track_height) * 0.5f;
         ctx.geo.add_rect({abs_pos[0], track_y}, {m_size[0], track_height}, m_track_color);
@@ -780,7 +880,8 @@ namespace engi::ui
         auto handle_w = 12.0f;
         auto handle_x = abs_pos[0] + ratio * (m_size[0] - handle_w);
         ctx.geo.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, m_handle_color);
-        ctx.wire.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, go::vu4{140, 140, 200, 255});
+        if (get_draw_border())
+            ctx.wire.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, go::vu4{140, 140, 200, 255});
     }
 
     // ===== UICheckbox =====
@@ -788,6 +889,9 @@ namespace engi::ui
     UICheckbox::UICheckbox()
     {
         m_size = {20.0f, 20.0f};
+        set_draw_background(true);
+        set_draw_border(true);
+        set_border_color({100, 100, 130, 255});
     }
 
     auto UICheckbox::on_event(UIEvent& ev) -> bool
@@ -816,8 +920,8 @@ namespace engi::ui
         auto abs_pos = ctx.origin + m_position;
         auto box_sz = go::vf2{m_size[1], m_size[1]};
 
-        ctx.geo.add_rect(abs_pos, box_sz, m_box_color);
-        ctx.wire.add_rect(abs_pos, box_sz, go::vu4{100, 100, 130, 255});
+        draw_element_background(*this, ctx, abs_pos, box_sz, m_box_color);
+        draw_element_border(*this, ctx, abs_pos, box_sz, get_border_color());
 
         if (m_checked)
         {
@@ -840,6 +944,14 @@ namespace engi::ui
     }
 
     // ===== UIDropdown =====
+
+    UIDropdown::UIDropdown()
+    {
+        set_draw_background(true);
+        set_bg_color({50, 50, 70, 255});
+        set_draw_border(true);
+        set_border_color({100, 100, 130, 255});
+    }
 
     auto UIDropdown::on_event(UIEvent& ev) -> bool
     {
@@ -913,9 +1025,9 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        ctx.geo.add_rect(abs_pos, m_size, m_bg_color);
+        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
         if (!m_open)
-            ctx.wire.add_rect(abs_pos, m_size, go::vu4{100, 100, 130, 255});
+            draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
 
         if (m_selected >= 0 && m_selected < static_cast<int>(m_items.size()))
         {
@@ -950,7 +1062,7 @@ namespace engi::ui
             for (int i = 0; i < static_cast<int>(m_items.size()); i++)
             {
                 auto iy = abs_pos[1] + m_size[1] + static_cast<float>(i) * item_height;
-                auto& col = (i == m_hovered_item) ? m_hover_color : m_bg_color;
+                auto col = (i == m_hovered_item) ? m_hover_color : get_bg_color();
                 ctx.geo.add_rect({abs_pos[0], iy}, {m_size[0], item_height}, col);
                 auto item_pos = centered_single_line_text_pos(
                     {abs_pos[0], iy}, {m_size[0], item_height}, m_items[i], font_atlas);
@@ -958,11 +1070,342 @@ namespace engi::ui
                     text_buf->add(m_items[i], item_pos, m_text_color);
             }
             auto open_size = go::vf2{m_size[0], m_size[1] * (static_cast<float>(m_items.size()) + 1.0f)};
-            ctx.wire.add_rect(abs_pos, open_size, go::vu4{100, 100, 130, 255});
+            draw_element_border(*this, ctx, abs_pos, open_size, get_border_color());
         }
     }
 
     // ===== UIPanel =====
+
+    UIExpandablePanel::UIExpandablePanel()
+    {
+        set_bg_color({30, 30, 45, 255});
+        set_border_color({100, 100, 130, 255});
+    }
+
+    auto UIExpandablePanel::add(std::unique_ptr<UIElement> element) -> UIElement*
+    {
+        auto ptr = element.get();
+        ptr->m_parent = this;
+        m_children.push_back(std::move(element));
+        mark_dirty();
+        return ptr;
+    }
+
+    auto UIExpandablePanel::apply_layout() -> void
+    {
+        sync_height_with_state();
+        clamp_scroll();
+        auto cursor = go::vf2{m_padding, m_header_height + m_padding};
+        for (auto& child : m_children)
+        {
+            if (!child->m_visible)
+                continue;
+            child->set_position(cursor);
+            cursor[1] += child->m_size[1] + m_spacing;
+        }
+    }
+
+    auto UIExpandablePanel::content_height() const -> float
+    {
+        auto max_bottom = m_header_height + m_padding;
+        for (const auto& child : m_children)
+        {
+            if (!child->m_visible)
+                continue;
+            max_bottom = std::max(max_bottom, child->m_position[1] + child->m_size[1]);
+        }
+        return max_bottom + m_padding;
+    }
+
+    auto UIExpandablePanel::max_scroll_y() const -> float
+    {
+        if (!m_expanded)
+            return 0.0f;
+        auto content_view_h = std::max(0.0f, m_size[1] - m_header_height);
+        auto full_content_h = std::max(0.0f, content_height() - m_header_height);
+        return std::max(0.0f, full_content_h - content_view_h);
+    }
+
+    auto UIExpandablePanel::clamp_scroll() -> void
+    {
+        m_scroll_y = std::clamp(m_scroll_y, 0.0f, max_scroll_y());
+    }
+
+    auto UIExpandablePanel::sync_height_with_state() -> void
+    {
+        if (m_folded_height <= 0.0f)
+            m_folded_height = std::max(1.0f, m_header_height);
+
+        if (m_expanded_height <= 0.0f)
+            m_expanded_height = std::max(m_folded_height, m_size[1]);
+
+        m_folded_height = std::max(1.0f, m_folded_height);
+        m_expanded_height = std::max(m_folded_height, m_expanded_height);
+
+        auto target_h = m_expanded ? m_expanded_height : m_folded_height;
+        m_size[1] = target_h;
+    }
+
+    auto UIExpandablePanel::on_event(UIEvent& ev) -> bool
+    {
+        if (!m_visible || !m_enabled)
+            return false;
+
+        apply_layout();
+
+        auto local = go::vf2{ev.mouse_pos[0] - m_position[0], ev.mouse_pos[1] - m_position[1]};
+        auto inside = point_in_rect(local, {0.0f, 0.0f}, m_size);
+        auto inside_header = point_in_rect(local, {0.0f, 0.0f}, {m_size[0], m_header_height});
+
+        if (ev.type == EventType::MousePress && ev.button == 0 && inside_header)
+        {
+            m_expanded = !m_expanded;
+            sync_height_with_state();
+            clamp_scroll();
+            ev.active_interaction_id = m_id;
+            ev.consumed = true;
+            mark_dirty();
+            return true;
+        }
+
+        if (!m_expanded)
+        {
+            if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
+            {
+                ev.consumed = true;
+                return true;
+            }
+            return false;
+        }
+
+        auto content_inside = point_in_rect(local, {0.0f, m_header_height}, {m_size[0], std::max(0.0f, m_size[1] - m_header_height)});
+        if (ev.type == EventType::Scroll && content_inside)
+        {
+            auto max_scroll = max_scroll_y();
+            if (max_scroll > 0.0f)
+            {
+                m_scroll_y = std::clamp(m_scroll_y - ev.scroll_dy * 20.0f, 0.0f, max_scroll);
+                mark_dirty();
+                ev.consumed = true;
+                return true;
+            }
+        }
+
+        auto child_ev = ev;
+        child_ev.mouse_pos = {local[0], local[1] + m_scroll_y};
+
+        auto is_pointer_event =
+            ev.type == EventType::MouseMove ||
+            ev.type == EventType::MousePress ||
+            ev.type == EventType::MouseRelease ||
+            ev.type == EventType::Scroll;
+
+        if (is_pointer_event)
+        {
+            for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+            {
+                if (!(*it)->m_visible)
+                    continue;
+                if ((*it)->element_type() != ElementType::Dropdown)
+                    continue;
+                auto* dropdown = static_cast<UIDropdown*>(it->get());
+                if (!dropdown->is_open())
+                    continue;
+                if ((*it)->on_event(child_ev))
+                {
+                    ev.consumed = child_ev.consumed;
+                    ev.active_interaction_id = child_ev.active_interaction_id;
+                    return true;
+                }
+            }
+        }
+
+        for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+        {
+            if ((*it)->on_event(child_ev))
+            {
+                ev.consumed = child_ev.consumed;
+                ev.active_interaction_id = child_ev.active_interaction_id;
+                return true;
+            }
+        }
+
+        if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
+        {
+            ev.consumed = true;
+            return true;
+        }
+        return false;
+    }
+
+    auto UIExpandablePanel::clear_interaction_state_recursive(uint32_t keep_id) -> void
+    {
+        for (auto& child : m_children)
+        {
+            if (!child)
+                continue;
+            if (child->get_id() != keep_id)
+                child->clear_interaction_state();
+            if (child->element_type() == ElementType::Panel)
+                static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
+            if (child->element_type() == ElementType::ExpandablePanel)
+                static_cast<UIExpandablePanel*>(child.get())->clear_interaction_state_recursive(keep_id);
+        }
+    }
+
+    auto UIExpandablePanel::draw(DrawContext& ctx) -> void
+    {
+        if (!m_visible)
+            return;
+
+        apply_layout();
+
+        auto* text_buf = effective_text_buffer(*this, ctx);
+        auto* font_atlas = effective_font_atlas(*this, ctx);
+        auto abs_pos = ctx.origin + m_position;
+        auto parent_clip_pos = ctx.clip_pos;
+        auto parent_clip_size = ctx.clip_size;
+        auto [new_clip_pos, new_clip_size] = clip_rect(abs_pos, m_size, parent_clip_pos, parent_clip_size);
+        if (new_clip_size[0] <= 0.0f || new_clip_size[1] <= 0.0f)
+            return;
+
+        ctx.geo.add_rect(abs_pos, {m_size[0], m_header_height}, m_header_bg_color);
+
+        auto triangle_center = go::vf2{abs_pos[0] + m_padding + 5.0f, abs_pos[1] + m_header_height * 0.5f};
+        auto side = std::max(6.0f, std::min(10.0f, m_header_height * 0.45f));
+        auto half_w = side * 0.5f;
+        auto half_h = side * 0.5f * std::sqrt(3.0f) * 0.5f;
+
+        if (m_expanded)
+        {
+            auto p0 = go::vf2{triangle_center[0] - half_w, triangle_center[1] - half_h};
+            auto p1 = go::vf2{triangle_center[0] + half_w, triangle_center[1] - half_h};
+            auto p2 = go::vf2{triangle_center[0], triangle_center[1] + half_h};
+            ctx.geo.add_triangle(p0, p1, p2, m_text_color);
+        }
+        else
+        {
+            auto p0 = go::vf2{triangle_center[0] - half_h, triangle_center[1] - half_w};
+            auto p1 = go::vf2{triangle_center[0] - half_h, triangle_center[1] + half_w};
+            auto p2 = go::vf2{triangle_center[0] + half_h, triangle_center[1]};
+            ctx.geo.add_triangle(p0, p1, p2, m_text_color);
+        }
+
+        if (!m_header.empty() && text_buf)
+        {
+            auto text_rect_pos = go::vf2{abs_pos[0] + m_padding + 12.0f, abs_pos[1]};
+            auto text_rect_size = go::vf2{std::max(0.0f, m_size[0] - m_padding - 12.0f), m_header_height};
+            auto text_pos = centered_single_line_text_pos(text_rect_pos, text_rect_size, m_header, font_atlas);
+            text_buf->add(m_header, text_pos, m_text_color);
+        }
+
+        if (m_expanded && should_draw_background(*this, get_bg_color()) && m_size[1] > m_header_height)
+        {
+            ctx.geo.add_rect(
+                {abs_pos[0], abs_pos[1] + m_header_height},
+                {m_size[0], std::max(0.0f, m_size[1] - m_header_height)},
+                get_bg_color()
+            );
+        }
+
+        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
+
+        if (!m_expanded)
+            return;
+
+        auto content_abs_pos = go::vf2{abs_pos[0], abs_pos[1] + m_header_height};
+        auto content_abs_size = go::vf2{m_size[0], std::max(0.0f, m_size[1] - m_header_height)};
+        auto [content_clip_pos, content_clip_size] = clip_rect(content_abs_pos, content_abs_size, new_clip_pos, new_clip_size);
+        if (content_clip_size[0] <= 0.0f || content_clip_size[1] <= 0.0f)
+            return;
+
+        auto content_scissor = to_rect(content_clip_pos, content_clip_size);
+
+        auto* clipped_geo = ctx.resolve_clipped_geo_buffer ? ctx.resolve_clipped_geo_buffer(content_scissor) : nullptr;
+        auto* clipped_wire = ctx.resolve_clipped_wire_buffer ? ctx.resolve_clipped_wire_buffer(content_scissor) : nullptr;
+
+        auto* child_geo = clipped_geo ? clipped_geo : &ctx.geo;
+        auto* child_wire = clipped_wire ? clipped_wire : &ctx.wire;
+
+        auto child_text_resolve = [&ctx, content_scissor](vk::FontId font) -> vk::TextBuffer*
+        {
+            if (ctx.resolve_clipped_text_buffer)
+                return ctx.resolve_clipped_text_buffer(font, content_scissor);
+            if (ctx.resolve_text_buffer)
+                return ctx.resolve_text_buffer(font);
+            return nullptr;
+        };
+
+        auto child_clipped_text_resolve = [&ctx](vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*
+        {
+            if (!ctx.resolve_clipped_text_buffer)
+                return nullptr;
+            return ctx.resolve_clipped_text_buffer(font, scissor);
+        };
+
+        auto child_clipped_geo_resolve = [&ctx](const VkRect2D& scissor) -> vk::GeometryBuffer2D*
+        {
+            if (!ctx.resolve_clipped_geo_buffer)
+                return nullptr;
+            return ctx.resolve_clipped_geo_buffer(scissor);
+        };
+
+        auto child_clipped_wire_resolve = [&ctx](const VkRect2D& scissor) -> vk::GeometryBuffer2DWire*
+        {
+            if (!ctx.resolve_clipped_wire_buffer)
+                return nullptr;
+            return ctx.resolve_clipped_wire_buffer(scissor);
+        };
+
+        auto child_ctx = DrawContext{
+            .geo = *child_geo,
+            .wire = *child_wire,
+            .resolve_text_buffer = child_text_resolve,
+            .resolve_clipped_text_buffer = child_clipped_text_resolve,
+            .resolve_clipped_geo_buffer = child_clipped_geo_resolve,
+            .resolve_clipped_wire_buffer = child_clipped_wire_resolve,
+            .default_font = ctx.default_font,
+            .origin = {abs_pos[0], abs_pos[1] - m_scroll_y},
+            .clip_pos = content_clip_pos,
+            .clip_size = content_clip_size
+        };
+
+        for (auto& child : m_children)
+        {
+            if (!child->is_visible())
+                continue;
+            if (child->element_type() == ElementType::Dropdown)
+                continue;
+            child->draw(child_ctx);
+        }
+
+        for (auto& child : m_children)
+        {
+            if (!child->is_visible())
+                continue;
+            if (child->element_type() != ElementType::Dropdown)
+                continue;
+            child->draw(child_ctx);
+        }
+
+        auto max_scroll = max_scroll_y();
+        if (max_scroll > 0.0f)
+        {
+            auto content_view_h = std::max(0.0f, m_size[1] - m_header_height);
+            auto full_content_h = std::max(0.0f, content_height() - m_header_height);
+            auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, content_view_h * (content_view_h / full_content_h));
+            auto travel = std::max(0.0f, content_view_h - thumb_h);
+            auto t = std::clamp(m_scroll_y / max_scroll, 0.0f, 1.0f);
+            ctx.geo.add_rect(
+                {abs_pos[0] + m_size[0] - k_panel_scrollbar_width, abs_pos[1] + m_header_height + travel * t},
+                {k_panel_scrollbar_width, thumb_h},
+                go::vu4{150, 150, 190, 190}
+            );
+        }
+
+        ctx.clip_pos = parent_clip_pos;
+        ctx.clip_size = parent_clip_size;
+    }
 
     auto UIPanel::add(std::unique_ptr<UIElement> element) -> UIElement*
     {
@@ -1089,6 +1532,8 @@ namespace engi::ui
                 child->clear_interaction_state();
             if (child->element_type() == ElementType::Panel)
                 static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
+            if (child->element_type() == ElementType::ExpandablePanel)
+                static_cast<UIExpandablePanel*>(child.get())->clear_interaction_state_recursive(keep_id);
         }
     }
 
@@ -1106,10 +1551,8 @@ namespace engi::ui
         if (new_clip_size[0] <= 0.0f || new_clip_size[1] <= 0.0f)
             return;
 
-        if (m_draw_background || m_bg_color[3] > 0)
-            ctx.geo.add_rect(abs_pos, m_size, m_bg_color);
-        if (m_draw_border && m_border_color[3] > 0)
-            ctx.wire.add_rect(abs_pos, m_size, m_border_color);
+        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
+        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
 
         ctx.clip_pos = new_clip_pos;
         ctx.clip_size = new_clip_size;
@@ -1221,6 +1664,48 @@ namespace engi::ui
         return &entry.text.value();
     }
 
+    auto UISystem::ensure_panel_clipped_geo_buffer(PanelDrawBuffers& panel_buf, const VkRect2D& scissor) -> vk::GeometryBuffer2D*
+    {
+        auto entry_id = panel_buf.clipped_geo_used++;
+        if (panel_buf.clipped_geo.size() <= entry_id)
+            panel_buf.clipped_geo.emplace_back();
+        auto& entry = panel_buf.clipped_geo[entry_id];
+        entry.scissor = scissor;
+        if (!entry.geo.has_value())
+        {
+            auto res = vk::GeometryBuffer2D::create();
+            if (!res)
+            {
+                std::println("[ERROR] UISystem: failed to create clipped GeometryBuffer2D");
+                return nullptr;
+            }
+            entry.geo = std::move(res.value());
+        }
+        return &entry.geo.value();
+    }
+
+    auto UISystem::ensure_panel_clipped_wire_buffer(PanelDrawBuffers& panel_buf, const VkRect2D& scissor) -> vk::GeometryBuffer2DWire*
+    {
+        if (panel_buf.clipped_geo_used == 0)
+            return nullptr;
+        auto entry_id = panel_buf.clipped_geo_used - 1;
+        if (panel_buf.clipped_geo.size() <= entry_id)
+            return nullptr;
+        auto& entry = panel_buf.clipped_geo[entry_id];
+        entry.scissor = scissor;
+        if (!entry.wire.has_value())
+        {
+            auto res = vk::GeometryBuffer2DWire::create();
+            if (!res)
+            {
+                std::println("[ERROR] UISystem: failed to create clipped GeometryBuffer2DWire");
+                return nullptr;
+            }
+            entry.wire = std::move(res.value());
+        }
+        return &entry.wire.value();
+    }
+
     auto UISystem::ensure_panel_dropdown_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*
     {
         if (!font.ptr)
@@ -1276,6 +1761,7 @@ namespace engi::ui
         panel_buf.geo.clear();
         panel_buf.wire.clear();
         panel_buf.clipped_text_used = 0;
+        panel_buf.clipped_geo_used = 0;
         panel_buf.dropdown_geo.clear();
         panel_buf.dropdown_wire.clear();
         panel_buf.scrollbar_geo.clear();
@@ -1285,6 +1771,11 @@ namespace engi::ui
             if (tb.has_value()) tb->clear();
         for (auto& ct : panel_buf.clipped_text)
             if (ct.text.has_value()) ct.text->clear();
+        for (auto& cg : panel_buf.clipped_geo)
+        {
+            if (cg.geo.has_value()) cg.geo->clear();
+            if (cg.wire.has_value()) cg.wire->clear();
+        }
 
         if (panel_clip.extent.width == 0 || panel_clip.extent.height == 0)
         {
@@ -1304,6 +1795,12 @@ namespace engi::ui
             .resolve_clipped_text_buffer = [this, &panel_buf](vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer* {
                 return ensure_panel_clipped_text_buffer(panel_buf, font, scissor);
             },
+            .resolve_clipped_geo_buffer = [this, &panel_buf](const VkRect2D& scissor) -> vk::GeometryBuffer2D* {
+                return ensure_panel_clipped_geo_buffer(panel_buf, scissor);
+            },
+            .resolve_clipped_wire_buffer = [this, &panel_buf](const VkRect2D& scissor) -> vk::GeometryBuffer2DWire* {
+                return ensure_panel_clipped_wire_buffer(panel_buf, scissor);
+            },
             .default_font = m_font,
             .origin = child_origin - clip_offset,
             .clip_pos = clip_offset,
@@ -1319,16 +1816,22 @@ namespace engi::ui
             .resolve_clipped_text_buffer = [](vk::FontId, const VkRect2D&) -> vk::TextBuffer* {
                 return nullptr;
             },
+            .resolve_clipped_geo_buffer = [](const VkRect2D&) -> vk::GeometryBuffer2D* {
+                return nullptr;
+            },
+            .resolve_clipped_wire_buffer = [](const VkRect2D&) -> vk::GeometryBuffer2DWire* {
+                return nullptr;
+            },
             .default_font = m_font,
             .origin = child_origin - clip_offset,
             .clip_pos = clip_offset,
             .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
         };
 
-        if (panel.m_draw_background || panel.m_bg_color[3] > 0)
-            panel_buf.geo.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.m_bg_color);
-        if (panel.m_draw_border && panel.m_border_color[3] > 0)
-            panel_buf.wire.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.m_border_color);
+        if (should_draw_background(panel, panel.get_bg_color()))
+            panel_buf.geo.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.get_bg_color());
+        if (panel.get_draw_border() && panel.get_border_color()[3] > 0)
+            panel_buf.wire.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.get_border_color());
 
         // Draw non-panel, non-dropdown children
         for (auto& child : panel.children())
@@ -1468,6 +1971,14 @@ namespace engi::ui
             upload_buffer(pb.dropdown_geo, cmd);
             upload_buffer(pb.dropdown_wire, cmd);
             upload_buffer(pb.scrollbar_geo, cmd);
+            for (size_t ci = 0; ci < pb.clipped_geo_used; ci++)
+            {
+                auto& cg = pb.clipped_geo[ci];
+                if (cg.geo.has_value())
+                    upload_buffer(cg.geo.value(), cmd);
+                if (cg.wire.has_value())
+                    upload_buffer(cg.wire.value(), cmd);
+            }
 
             auto upload_text = [](auto& text_buf, VkCommandBuffer cmd)
             {
@@ -1512,16 +2023,6 @@ namespace engi::ui
                 overlay.draw(cmd, tb.value(), pb.view);
             }
 
-            for (size_t ci = 0; ci < pb.clipped_text_used; ci++)
-            {
-                const auto& ct = pb.clipped_text[ci];
-                if (!ct.text.has_value() || ct.text->vertex_count() == 0) continue;
-                vkCmdSetScissor(cmd, 0, 1, &ct.scissor);
-                overlay.draw(cmd, ct.text.value(), pb.view);
-            }
-
-            vkCmdSetScissor(cmd, 0, 1, &pb.view);
-
             overlay.start_draw_2d(cmd);
             overlay.draw(cmd, pb.dropdown_geo, pb.view);
 
@@ -1535,9 +2036,34 @@ namespace engi::ui
                 overlay.draw(cmd, tb.value(), pb.view);
             }
 
+            for (size_t ci = 0; ci < pb.clipped_geo_used; ci++)
+            {
+                const auto& cg = pb.clipped_geo[ci];
+                vkCmdSetScissor(cmd, 0, 1, &cg.scissor);
+                if (cg.geo.has_value())
+                {
+                    overlay.start_draw_2d(cmd);
+                    overlay.draw(cmd, cg.geo.value(), pb.view);
+                }
+                if (cg.wire.has_value())
+                {
+                    overlay.start_draw_2d_wire(cmd);
+                    overlay.draw(cmd, cg.wire.value(), pb.view);
+                }
+            }
+
             vkCmdSetScissor(cmd, 0, 1, &pb.view);
             overlay.start_draw_2d(cmd);
             overlay.draw(cmd, pb.scrollbar_geo, pb.view);
+
+            overlay.start_text_draw(cmd);
+            for (size_t ci = 0; ci < pb.clipped_text_used; ci++)
+            {
+                const auto& ct = pb.clipped_text[ci];
+                if (!ct.text.has_value() || ct.text->vertex_count() == 0) continue;
+                vkCmdSetScissor(cmd, 0, 1, &ct.scissor);
+                overlay.draw(cmd, ct.text.value(), pb.view);
+            }
             vkCmdSetScissor(cmd, 0, 1, &pb.view);
         }
 

@@ -72,6 +72,7 @@ namespace engi::ui
         Slider,
         Checkbox,
         Dropdown,
+        ExpandablePanel,
         Panel
     };
 
@@ -83,6 +84,8 @@ namespace engi::ui
         vk::GeometryBuffer2DWire& wire;
         std::function<vk::TextBuffer*(vk::FontId)> resolve_text_buffer;
         std::function<vk::TextBuffer*(vk::FontId, const VkRect2D&)> resolve_clipped_text_buffer;
+        std::function<vk::GeometryBuffer2D*(const VkRect2D&)> resolve_clipped_geo_buffer;
+        std::function<vk::GeometryBuffer2DWire*(const VkRect2D&)> resolve_clipped_wire_buffer;
         vk::FontId default_font;
         go::vf2 origin;
         go::vf2 clip_pos;
@@ -96,6 +99,7 @@ namespace engi::ui
     // ===== UIElement (abstract base) =====
 
     class UIPanel;
+    class UIExpandablePanel;
 
     class UIElement
     {
@@ -129,6 +133,18 @@ namespace engi::ui
         auto set_font(vk::FontId f) -> void;
         auto get_font() const noexcept -> vk::FontId { return m_font; }
 
+        auto set_draw_background(bool v) -> void;
+        auto get_draw_background() const noexcept -> bool { return m_draw_background; }
+
+        auto set_bg_color(go::vu4 c) -> void;
+        auto get_bg_color() const noexcept -> go::vu4 { return m_bg_color; }
+
+        auto set_draw_border(bool v) -> void;
+        auto get_draw_border() const noexcept -> bool { return m_draw_border; }
+
+        auto set_border_color(go::vu4 c) -> void;
+        auto get_border_color() const noexcept -> go::vu4 { return m_border_color; }
+
         auto is_dirty() const noexcept -> bool { return m_dirty; }
         auto mark_dirty() -> void;
         auto clear_dirty() -> void { m_dirty = false; }
@@ -140,10 +156,15 @@ namespace engi::ui
         bool m_visible = true;
         bool m_enabled = true;
         vk::FontId m_font = {};
+        bool m_draw_background = false;
+        go::vu4 m_bg_color = {0, 0, 0, 0};
+        bool m_draw_border = false;
+        go::vu4 m_border_color = {100, 100, 130, 255};
         bool m_dirty = true;
-        UIPanel* m_parent = nullptr;
+        UIElement* m_parent = nullptr;
 
         friend class UIPanel;
+        friend class UIExpandablePanel;
     };
 
     // ===== UILabel =====
@@ -184,7 +205,7 @@ namespace engi::ui
     class UIButton : public UIElement
     {
     public:
-        UIButton() = default;
+        UIButton();
 
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
@@ -222,7 +243,7 @@ namespace engi::ui
     class UITextInput : public UIElement
     {
     public:
-        UITextInput() = default;
+        UITextInput();
 
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
@@ -232,26 +253,18 @@ namespace engi::ui
         auto set_text(std::wstring t) -> void;
         auto get_text() const -> const std::wstring& { return m_text; }
 
-        auto set_bg_color(go::vu4 c) -> void;
-        auto get_bg_color() const noexcept -> go::vu4 { return m_bg_color; }
-
         auto set_text_color(go::vu4 c) -> void;
         auto get_text_color() const noexcept -> go::vu4 { return m_text_color; }
 
         auto set_cursor_color(go::vu4 c) -> void;
         auto get_cursor_color() const noexcept -> go::vu4 { return m_cursor_color; }
 
-        auto set_border_color(go::vu4 c) -> void;
-        auto get_border_color() const noexcept -> go::vu4 { return m_border_color; }
-
         std::function<void(const std::wstring&)> on_change;
 
     private:
         std::wstring m_text;
-        go::vu4 m_bg_color     = {30, 30, 45, 255};
         go::vu4 m_text_color   = {255, 255, 255, 255};
         go::vu4 m_cursor_color = {255, 255, 255, 200};
-        go::vu4 m_border_color = {80, 80, 110, 255};
         bool m_focused = false;
         uint32_t m_cursor = 0;
         float m_scroll_x = 0.0f;
@@ -272,26 +285,18 @@ namespace engi::ui
         auto set_text(std::wstring t) -> void;
         auto get_text() const -> const std::wstring& { return m_text; }
 
-        auto set_bg_color(go::vu4 c) -> void;
-        auto get_bg_color() const noexcept -> go::vu4 { return m_bg_color; }
-
         auto set_text_color(go::vu4 c) -> void;
         auto get_text_color() const noexcept -> go::vu4 { return m_text_color; }
 
         auto set_cursor_color(go::vu4 c) -> void;
         auto get_cursor_color() const noexcept -> go::vu4 { return m_cursor_color; }
 
-        auto set_border_color(go::vu4 c) -> void;
-        auto get_border_color() const noexcept -> go::vu4 { return m_border_color; }
-
         std::function<void(const std::wstring&)> on_change;
 
     private:
         std::wstring m_text;
-        go::vu4 m_bg_color     = {30, 30, 45, 255};
         go::vu4 m_text_color   = {255, 255, 255, 255};
         go::vu4 m_cursor_color = {255, 255, 255, 200};
-        go::vu4 m_border_color = {80, 80, 110, 255};
         bool m_focused = false;
         uint32_t m_cursor = 0;
         float m_scroll_x = 0.0f;
@@ -376,7 +381,7 @@ namespace engi::ui
     class UIDropdown : public UIElement
     {
     public:
-        UIDropdown() = default;
+        UIDropdown();
 
         auto on_event(UIEvent& ev) -> bool override;
         auto draw(DrawContext& ctx) -> void override;
@@ -390,9 +395,6 @@ namespace engi::ui
         auto set_selected(int idx) -> void;
         auto get_selected() const noexcept -> int { return m_selected; }
 
-        auto set_bg_color(go::vu4 c) -> void;
-        auto get_bg_color() const noexcept -> go::vu4 { return m_bg_color; }
-
         auto set_hover_color(go::vu4 c) -> void;
         auto get_hover_color() const noexcept -> go::vu4 { return m_hover_color; }
 
@@ -404,7 +406,6 @@ namespace engi::ui
     private:
         std::vector<std::wstring> m_items;
         int m_selected = -1;
-        go::vu4 m_bg_color      = {50, 50, 70, 255};
         go::vu4 m_hover_color   = {70, 70, 100, 255};
         go::vu4 m_text_color    = {255, 255, 255, 255};
         bool m_open = false;
@@ -412,6 +413,79 @@ namespace engi::ui
     };
 
     // ===== UIPanel (aggregate element) =====
+
+    class UIExpandablePanel : public UIElement
+    {
+    public:
+        UIExpandablePanel();
+
+        auto on_event(UIEvent& ev) -> bool override;
+        auto draw(DrawContext& ctx) -> void override;
+        auto element_type() const -> ElementType override { return ElementType::ExpandablePanel; }
+
+        auto add(std::unique_ptr<UIElement> element) -> UIElement*;
+
+        template<typename T, typename... Args>
+        auto add_new(Args&&... args) -> T*
+        {
+            auto el = std::make_unique<T>(std::forward<Args>(args)...);
+            auto ptr = el.get();
+            add(std::move(el));
+            return ptr;
+        }
+
+        auto children() -> std::vector<std::unique_ptr<UIElement>>& { return m_children; }
+        auto children() const -> const std::vector<std::unique_ptr<UIElement>>& { return m_children; }
+
+        auto set_header(std::wstring text) -> void;
+        auto get_header() const -> const std::wstring& { return m_header; }
+
+        auto set_expanded(bool expanded) -> void;
+        auto is_expanded() const noexcept -> bool { return m_expanded; }
+
+        auto set_padding(float p) -> void;
+        auto get_padding() const noexcept -> float { return m_padding; }
+
+        auto set_spacing(float s) -> void;
+        auto get_spacing() const noexcept -> float { return m_spacing; }
+
+        auto set_header_height(float h) -> void;
+        auto get_header_height() const noexcept -> float { return m_header_height; }
+
+        auto set_expanded_height(float h) -> void;
+        auto get_expanded_height() const noexcept -> float { return m_expanded_height; }
+
+        auto set_folded_height(float h) -> void;
+        auto get_folded_height() const noexcept -> float { return m_folded_height; }
+
+        auto set_header_bg_color(go::vu4 c) -> void;
+        auto get_header_bg_color() const noexcept -> go::vu4 { return m_header_bg_color; }
+
+        auto set_text_color(go::vu4 c) -> void;
+        auto get_text_color() const noexcept -> go::vu4 { return m_text_color; }
+
+    private:
+        friend class UISystem;
+        friend class UIPanel;
+        auto apply_layout() -> void;
+        auto content_height() const -> float;
+        auto max_scroll_y() const -> float;
+        auto clamp_scroll() -> void;
+        auto sync_height_with_state() -> void;
+        auto clear_interaction_state_recursive(uint32_t keep_id) -> void;
+
+        std::vector<std::unique_ptr<UIElement>> m_children;
+        std::wstring m_header;
+        bool m_expanded = true;
+        float m_padding = 4.0f;
+        float m_spacing = 4.0f;
+        float m_header_height = 24.0f;
+        float m_expanded_height = 0.0f;
+        float m_folded_height = 0.0f;
+        float m_scroll_y = 0.0f;
+        go::vu4 m_header_bg_color = {50, 50, 70, 255};
+        go::vu4 m_text_color = {255, 255, 255, 255};
+    };
 
     class UIPanel : public UIElement
     {
@@ -451,20 +525,9 @@ namespace engi::ui
         auto set_scroll_offset(go::vf2 off) -> void;
         auto get_scroll_offset() const noexcept -> go::vf2 { return m_scroll_offset; }
 
-        auto set_draw_background(bool v) -> void;
-        auto get_draw_background() const noexcept -> bool { return m_draw_background; }
-
-        auto set_bg_color(go::vu4 c) -> void;
-        auto get_bg_color() const noexcept -> go::vu4 { return m_bg_color; }
-
-        auto set_draw_border(bool v) -> void;
-        auto get_draw_border() const noexcept -> bool { return m_draw_border; }
-
-        auto set_border_color(go::vu4 c) -> void;
-        auto get_border_color() const noexcept -> go::vu4 { return m_border_color; }
-
     private:
         friend class UISystem;
+        friend class UIExpandablePanel;
         auto apply_layout() -> void;
         auto content_height() const -> float;
         auto max_scroll_y() const -> float;
@@ -477,10 +540,6 @@ namespace engi::ui
         float m_spacing = 4.0f;
         bool m_scrollable = false;
         go::vf2 m_scroll_offset = {0.0f, 0.0f};
-        bool m_draw_background = false;
-        go::vu4 m_bg_color = {0, 0, 0, 0};
-        bool m_draw_border = false;
-        go::vu4 m_border_color = {100, 100, 130, 255};
     };
 
     // ===== UISystem =====
@@ -517,11 +576,20 @@ namespace engi::ui
                 VkRect2D scissor = {};
             };
 
+            struct ClippedGeoDraw
+            {
+                std::optional<vk::GeometryBuffer2D> geo;
+                std::optional<vk::GeometryBuffer2DWire> wire;
+                VkRect2D scissor = {};
+            };
+
             vk::GeometryBuffer2D geo;
             vk::GeometryBuffer2DWire wire;
             std::vector<std::optional<vk::TextBuffer>> text;
             std::vector<ClippedTextDraw> clipped_text;
             size_t clipped_text_used = 0;
+            std::vector<ClippedGeoDraw> clipped_geo;
+            size_t clipped_geo_used = 0;
 
             vk::GeometryBuffer2D dropdown_geo;
             vk::GeometryBuffer2DWire dropdown_wire;
@@ -537,6 +605,8 @@ namespace engi::ui
         auto ensure_panel_buffers(size_t count) -> bool;
         auto ensure_panel_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*;
         auto ensure_panel_clipped_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*;
+        auto ensure_panel_clipped_geo_buffer(PanelDrawBuffers& panel_buf, const VkRect2D& scissor) -> vk::GeometryBuffer2D*;
+        auto ensure_panel_clipped_wire_buffer(PanelDrawBuffers& panel_buf, const VkRect2D& scissor) -> vk::GeometryBuffer2DWire*;
         auto ensure_panel_dropdown_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*;
         auto build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void;
         auto skip_panel_ids(const UIPanel& panel, size_t& panel_id) -> void;

@@ -408,6 +408,62 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     dd_btn3->set_size({92.0f, 20.0f});
     dd_btn3->on_click = [](){ std::println("[UI] DD Btn 3"); };
 
+    auto* expandable = root.add_new<ui::UIExpandablePanel>();
+    expandable->set_size({220.0f, 126.0f});
+    expandable->set_header(L"Advanced controls");
+    expandable->set_expanded(true);
+    expandable->set_header_height(24.0f);
+    expandable->set_folded_height(24.0f);
+    expandable->set_expanded_height(126.0f);
+    expandable->set_padding(6.0f);
+    expandable->set_spacing(4.0f);
+    expandable->set_draw_background(true);
+    expandable->set_bg_color({30, 30, 45, 220});
+    expandable->set_draw_border(true);
+    expandable->set_border_color({110, 110, 140, 255});
+    expandable->set_header_bg_color({45, 55, 80, 240});
+
+    auto* ex_label = expandable->add_new<ui::UILabel>();
+    ex_label->set_text(L"Inside expandable");
+    ex_label->set_size({208.0f, 16.0f});
+
+    auto* ex_button = expandable->add_new<ui::UIButton>();
+    ex_button->set_label(L"Action");
+    ex_button->set_size({208.0f, 20.0f});
+    ex_button->on_click = [](){ std::println("[UI] Expandable action"); };
+
+    auto* ex_slider = expandable->add_new<ui::UISlider>();
+    ex_slider->set_size({208.0f, 16.0f});
+    ex_slider->set_value(0.5f);
+    ex_slider->on_change = [](float v){ std::println("[UI] Expandable slider: {:.2f}", v); };
+
+    auto* ex_dropdown = expandable->add_new<ui::UIDropdown>();
+    ex_dropdown->set_size({208.0f, 20.0f});
+    ex_dropdown->set_items({L"Alpha", L"Beta", L"Gamma"});
+    ex_dropdown->set_selected(0);
+    ex_dropdown->on_change = [](int idx){ std::println("[UI] Expandable dropdown: {}", idx); };
+
+    auto* ex_nested_panel = expandable->add_new<ui::UIPanel>();
+    ex_nested_panel->set_size({208.0f, 48.0f});
+    ex_nested_panel->set_layout(ui::Layout::Horizontal);
+    ex_nested_panel->set_padding(4.0f);
+    ex_nested_panel->set_spacing(4.0f);
+    ex_nested_panel->set_draw_background(true);
+    ex_nested_panel->set_bg_color({40, 40, 60, 220});
+    ex_nested_panel->set_draw_border(true);
+    ex_nested_panel->set_border_color({100, 100, 130, 255});
+
+    auto* ex_nested_btn = ex_nested_panel->add_new<ui::UIButton>();
+    ex_nested_btn->set_label(L"Nested");
+    ex_nested_btn->set_size({96.0f, 20.0f});
+    ex_nested_btn->on_click = [](){ std::println("[UI] Expandable nested button"); };
+
+    auto* ex_nested_check = ex_nested_panel->add_new<ui::UICheckbox>();
+    ex_nested_check->set_size({96.0f, 20.0f});
+    ex_nested_check->set_label(L"Flag");
+    ex_nested_check->set_checked(false);
+    ex_nested_check->on_change = [](bool v){ std::println("[UI] Expandable nested check: {}", v); };
+
     auto* text_area = root.add_new<ui::UITextArea>();
     text_area->set_size({220.0f, 90.0f});
     text_area->set_text(L"TextArea\nType here");
