@@ -1,3 +1,4 @@
+#include "ui_system.hpp"
 #include <test_engi.hpp>
 
 #include <GLFW/glfw3.h>
@@ -273,16 +274,106 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     if (!m_ui.init(font_id))
         return;
 
+    ui::UIStyleSheet style_sheet;
+    style_sheet.label = {
+        ui::UILabel::Style{
+            .text_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.button = {
+        ui::UIButton::Style{
+            .draw_background = true,
+            .draw_border = true,
+            .bg_color = {170, 40, 40, 255},
+            .border_color = {255, 0, 0, 255},
+            .text_color = {255, 255, 255, 255},
+            .hover_bg_color = {210, 70, 70, 255},
+            .hover_border_color = {255, 0, 0, 255},
+            .hover_text_color = {255, 255, 255, 255},
+            .pressed_bg_color = {140, 20, 20, 255},
+            .pressed_border_color = {255, 255, 255, 255},
+            .pressed_text_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.text_input = {
+        ui::UITextInput::Style{
+            .draw_background = true,
+            .draw_border = true,
+            .bg_color = {110, 20, 20, 255},
+            .border_color = {255, 0, 0, 255},
+            .text_color = {255, 255, 255, 255},
+            .active_bg_color = {140, 30, 30, 255},
+            .active_border_color = {255, 255, 255, 255},
+            .active_text_color = {255, 255, 255, 255},
+            .cursor_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.text_area = {
+        ui::UITextArea::Style{
+            .draw_background = true,
+            .draw_border = true,
+            .bg_color = {110, 20, 20, 255},
+            .border_color = {255, 0, 0, 255},
+            .text_color = {255, 255, 255, 255},
+            .active_bg_color = {140, 30, 30, 255},
+            .active_border_color = {255, 255, 255, 255},
+            .active_text_color = {255, 255, 255, 255},
+            .cursor_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.slider = {
+        ui::UISlider::Style{
+            .track_color = {255, 255, 255, 255},
+            .handle_bg_color = {170, 40, 40, 255},
+            .handle_border_color = {255, 0, 0, 255},
+            .draw_handle_border = true
+        }
+    };
+    style_sheet.checkbox = {
+        ui::UICheckbox::Style{
+            .box_color = {150, 30, 30, 255},
+            .border_color = {255, 0, 0, 255},
+            .check_color = {255, 255, 255, 255},
+            .text_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.dropdown = {
+        ui::UIDropdown::Style{
+            .draw_background = true,
+            .draw_border = true,
+            .bg_color = {150, 30, 30, 255},
+            .border_color = {255, 0, 0, 255},
+            .hover_color = {210, 70, 70, 255},
+            .text_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.expandable_panel = {
+        ui::UIExpandablePanel::Style{
+            .draw_background = true,
+            .draw_border = true,
+            .bg_color = {90, 15, 15, 255},
+            .border_color = {255, 0, 0, 255},
+            .header_bg_color = {170, 40, 40, 255},
+            .text_color = {255, 255, 255, 255}
+        }
+    };
+    style_sheet.panel = {
+        ui::UIPanel::Style{
+            .draw_background = true,
+            .draw_border = true,
+            .bg_color = {90, 15, 15, 220},
+            .border_color = {255, 0, 0, 255}
+        }
+    };
+
     auto& root = m_ui.root();
     root.set_layout(ui::Layout::Vertical);
     root.set_padding(10.0f);
     root.set_spacing(8.0f);
     root.set_draw_background(true);
-    root.set_bg_color({18, 18, 30, 180});
 
     auto* title = root.add_new<ui::UILabel>();
     title->set_text(L"UI controls test");
-    title->set_color({240, 200, 90, 255});
     title->set_size({220.0f, 20.0f});
 
     auto* align_left = root.add_new<ui::UILabel>();
@@ -306,9 +397,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     main_panel->set_padding(4.0f);
     main_panel->set_spacing(8.0f);
     main_panel->set_draw_background(true);
-    main_panel->set_bg_color({28, 28, 45, 220});
     main_panel->set_draw_border(true);
-    main_panel->set_border_color({110, 110, 140, 255});
 
     auto* left_panel = main_panel->add_new<ui::UIPanel>();
     left_panel->set_size({100.0f, 100.0f});
@@ -316,9 +405,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     left_panel->set_padding(4.0f);
     left_panel->set_spacing(4.0f);
     left_panel->set_draw_background(true);
-    left_panel->set_bg_color({38, 38, 58, 220});
     left_panel->set_draw_border(true);
-    left_panel->set_border_color({100, 100, 130, 255});
     left_panel->set_scrollable(true);
 
     auto* left_label = left_panel->add_new<ui::UILabel>();
@@ -338,9 +425,6 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     auto* btn_count = left_panel->add_new<ui::UIButton>();
     btn_count->set_label(L"Count");
     btn_count->set_size({92.0f, 20.0f});
-    btn_count->set_color_normal({50, 80, 50, 255});
-    btn_count->set_color_hover({70, 110, 70, 255});
-    btn_count->set_color_pressed({30, 60, 30, 255});
     btn_count->on_click = [this]()
     {
         m_click_count++;
@@ -363,9 +447,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     right_panel->set_padding(4.0f);
     right_panel->set_spacing(4.0f);
     right_panel->set_draw_background(true);
-    right_panel->set_bg_color({38, 38, 58, 220});
     right_panel->set_draw_border(true);
-    right_panel->set_border_color({100, 100, 130, 255});
     right_panel->set_scrollable(true);
 
     auto* right_label = right_panel->add_new<ui::UILabel>();
@@ -418,10 +500,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     expandable->set_padding(6.0f);
     expandable->set_spacing(4.0f);
     expandable->set_draw_background(true);
-    expandable->set_bg_color({30, 30, 45, 220});
     expandable->set_draw_border(true);
-    expandable->set_border_color({110, 110, 140, 255});
-    expandable->set_header_bg_color({45, 55, 80, 240});
 
     auto* ex_label = expandable->add_new<ui::UILabel>();
     ex_label->set_text(L"Inside expandable");
@@ -449,9 +528,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     ex_nested_panel->set_padding(4.0f);
     ex_nested_panel->set_spacing(4.0f);
     ex_nested_panel->set_draw_background(true);
-    ex_nested_panel->set_bg_color({40, 40, 60, 220});
     ex_nested_panel->set_draw_border(true);
-    ex_nested_panel->set_border_color({100, 100, 130, 255});
 
     auto* ex_nested_btn = ex_nested_panel->add_new<ui::UIButton>();
     ex_nested_btn->set_label(L"Nested");
@@ -471,6 +548,29 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     {
         std::println("[UI] TextArea size: {}", text.size());
     };
+
+    auto apply_style_recursive = [](this auto&& self, ui::UIElement& element, size_t style_id, const ui::UIStyleSheet& style_sheet) -> void
+    {
+        element.applyStyleSheet(style_sheet, style_id);
+
+        if (element.element_type() == ui::ElementType::Panel)
+        {
+            auto& panel = static_cast<ui::UIPanel&>(element);
+            for (auto& child : panel.children())
+                self(*child, style_id, style_sheet);
+            return;
+        }
+
+        if (element.element_type() == ui::ElementType::ExpandablePanel)
+        {
+            auto& panel = static_cast<ui::UIExpandablePanel&>(element);
+            for (auto& child : panel.children())
+                self(*child, style_id, style_sheet);
+        }
+    };
+    apply_style_recursive(root, 0, style_sheet);
+    root.set_draw_background(false);
+    root.set_draw_border(false);
 
     std::println("[INFO] UI system initialized");
 }

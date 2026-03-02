@@ -241,20 +241,20 @@ namespace engi::ui
     static constexpr auto k_panel_scrollbar_min_thumb_height = 12.0f;
     static constexpr auto k_text_edit_padding = 4.0f;
 
-    static auto should_draw_background(const UIElement& el, const go::vu4& color) -> bool
+    static auto should_draw_background(bool draw_background, const go::vu4& color) -> bool
     {
-        return el.get_draw_background() || color[3] > 0;
+        return draw_background && color[3] > 0;
     }
 
-    static auto draw_element_background(const UIElement& el, DrawContext& ctx, const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void
+    static auto draw_element_background(DrawContext& ctx, const go::vf2& pos, const go::vf2& size, const go::vu4& color, bool draw_background) -> void
     {
-        if (should_draw_background(el, color))
+        if (should_draw_background(draw_background, color))
             ctx.geo.add_rect(pos, size, color);
     }
 
-    static auto draw_element_border(const UIElement& el, DrawContext& ctx, const go::vf2& pos, const go::vf2& size, const go::vu4& color) -> void
+    static auto draw_element_border(DrawContext& ctx, const go::vf2& pos, const go::vf2& size, const go::vu4& color, bool draw_border) -> void
     {
-        if (el.get_draw_border() && color[3] > 0)
+        if (draw_border && color[3] > 0)
             ctx.wire.add_rect(pos, size, color);
     }
 
@@ -314,86 +314,148 @@ namespace engi::ui
         mark_dirty();
     }
 
-    auto UIElement::set_draw_background(bool v) -> void
-    {
-        if (m_draw_background != v)
-        {
-            m_draw_background = v;
-            mark_dirty();
-        }
-    }
-
-    auto UIElement::set_bg_color(go::vu4 c) -> void
-    {
-        m_bg_color = c;
-        mark_dirty();
-    }
-
-    auto UIElement::set_draw_border(bool v) -> void
-    {
-        if (m_draw_border != v)
-        {
-            m_draw_border = v;
-            mark_dirty();
-        }
-    }
-
-    auto UIElement::set_border_color(go::vu4 c) -> void
-    {
-        m_border_color = c;
-        mark_dirty();
-    }
-
     // ===== UILabel Setters =====
 
+    auto UILabel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.label.size())
+            return;
+        m_style = style_sheet.label[index];
+        mark_dirty();
+    }
+
     auto UILabel::set_text(std::wstring t) -> void { m_text = std::move(t); mark_dirty(); }
-    auto UILabel::set_color(go::vu4 c) -> void { m_color = c; mark_dirty(); }
+    auto UILabel::set_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
     auto UILabel::set_align(UILabelAlign a) -> void { if (m_align != a) { m_align = a; mark_dirty(); } }
 
     // ===== UIButton Setters =====
 
+    auto UIButton::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.button.size())
+            return;
+        m_style = style_sheet.button[index];
+        mark_dirty();
+    }
+
     auto UIButton::set_label(std::wstring t) -> void { m_label = std::move(t); mark_dirty(); }
-    auto UIButton::set_color_normal(go::vu4 c) -> void { m_color_normal = c; mark_dirty(); }
-    auto UIButton::set_color_hover(go::vu4 c) -> void { m_color_hover = c; mark_dirty(); }
-    auto UIButton::set_color_pressed(go::vu4 c) -> void { m_color_pressed = c; mark_dirty(); }
-    auto UIButton::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
+    auto UIButton::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
+    auto UIButton::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
+    auto UIButton::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
+    auto UIButton::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
+    auto UIButton::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
+    auto UIButton::set_hover_bg_color(go::vu4 c) -> void { m_style.hover_bg_color = c; mark_dirty(); }
+    auto UIButton::set_hover_border_color(go::vu4 c) -> void { m_style.hover_border_color = c; mark_dirty(); }
+    auto UIButton::set_hover_text_color(go::vu4 c) -> void { m_style.hover_text_color = c; mark_dirty(); }
+    auto UIButton::set_pressed_bg_color(go::vu4 c) -> void { m_style.pressed_bg_color = c; mark_dirty(); }
+    auto UIButton::set_pressed_border_color(go::vu4 c) -> void { m_style.pressed_border_color = c; mark_dirty(); }
+    auto UIButton::set_pressed_text_color(go::vu4 c) -> void { m_style.pressed_text_color = c; mark_dirty(); }
 
     // ===== UITextInput Setters =====
 
+    auto UITextInput::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.text_input.size())
+            return;
+        m_style = style_sheet.text_input[index];
+        mark_dirty();
+    }
+
     auto UITextInput::set_text(std::wstring t) -> void { m_text = std::move(t); m_cursor = std::min(m_cursor, static_cast<uint32_t>(m_text.size())); mark_dirty(); }
-    auto UITextInput::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
-    auto UITextInput::set_cursor_color(go::vu4 c) -> void { m_cursor_color = c; mark_dirty(); }
+    auto UITextInput::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
+    auto UITextInput::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
+    auto UITextInput::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
+    auto UITextInput::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
+    auto UITextInput::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
+    auto UITextInput::set_active_bg_color(go::vu4 c) -> void { m_style.active_bg_color = c; mark_dirty(); }
+    auto UITextInput::set_active_border_color(go::vu4 c) -> void { m_style.active_border_color = c; mark_dirty(); }
+    auto UITextInput::set_active_text_color(go::vu4 c) -> void { m_style.active_text_color = c; mark_dirty(); }
+    auto UITextInput::set_cursor_color(go::vu4 c) -> void { m_style.cursor_color = c; mark_dirty(); }
 
     // ===== UITextArea Setters =====
 
+    auto UITextArea::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.text_area.size())
+            return;
+        m_style = style_sheet.text_area[index];
+        mark_dirty();
+    }
+
     auto UITextArea::set_text(std::wstring t) -> void { m_text = std::move(t); m_cursor = std::min(m_cursor, static_cast<uint32_t>(m_text.size())); mark_dirty(); }
-    auto UITextArea::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
-    auto UITextArea::set_cursor_color(go::vu4 c) -> void { m_cursor_color = c; mark_dirty(); }
+    auto UITextArea::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
+    auto UITextArea::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
+    auto UITextArea::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
+    auto UITextArea::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
+    auto UITextArea::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
+    auto UITextArea::set_active_bg_color(go::vu4 c) -> void { m_style.active_bg_color = c; mark_dirty(); }
+    auto UITextArea::set_active_border_color(go::vu4 c) -> void { m_style.active_border_color = c; mark_dirty(); }
+    auto UITextArea::set_active_text_color(go::vu4 c) -> void { m_style.active_text_color = c; mark_dirty(); }
+    auto UITextArea::set_cursor_color(go::vu4 c) -> void { m_style.cursor_color = c; mark_dirty(); }
 
     // ===== UISlider Setters =====
+
+    auto UISlider::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.slider.size())
+            return;
+        m_style = style_sheet.slider[index];
+        mark_dirty();
+    }
 
     auto UISlider::set_value(float v) -> void { if (m_value != v) { m_value = v; mark_dirty(); } }
     auto UISlider::set_min_val(float v) -> void { if (m_min_val != v) { m_min_val = v; mark_dirty(); } }
     auto UISlider::set_max_val(float v) -> void { if (m_max_val != v) { m_max_val = v; mark_dirty(); } }
-    auto UISlider::set_track_color(go::vu4 c) -> void { m_track_color = c; mark_dirty(); }
-    auto UISlider::set_handle_color(go::vu4 c) -> void { m_handle_color = c; mark_dirty(); }
+    auto UISlider::set_track_color(go::vu4 c) -> void { m_style.track_color = c; mark_dirty(); }
+    auto UISlider::set_handle_bg_color(go::vu4 c) -> void { m_style.handle_bg_color = c; mark_dirty(); }
+    auto UISlider::set_handle_border_color(go::vu4 c) -> void { m_style.handle_border_color = c; mark_dirty(); }
+    auto UISlider::set_draw_handle_border(bool v) -> void { if (m_style.draw_handle_border != v) { m_style.draw_handle_border = v; mark_dirty(); } }
 
     // ===== UICheckbox Setters =====
 
+    auto UICheckbox::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.checkbox.size())
+            return;
+        m_style = style_sheet.checkbox[index];
+        mark_dirty();
+    }
+
     auto UICheckbox::set_checked(bool v) -> void { if (m_checked != v) { m_checked = v; mark_dirty(); } }
     auto UICheckbox::set_label(std::wstring t) -> void { m_label = std::move(t); mark_dirty(); }
-    auto UICheckbox::set_box_color(go::vu4 c) -> void { m_box_color = c; mark_dirty(); }
-    auto UICheckbox::set_check_color(go::vu4 c) -> void { m_check_color = c; mark_dirty(); }
-    auto UICheckbox::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
+    auto UICheckbox::set_box_color(go::vu4 c) -> void { m_style.box_color = c; mark_dirty(); }
+    auto UICheckbox::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
+    auto UICheckbox::set_check_color(go::vu4 c) -> void { m_style.check_color = c; mark_dirty(); }
+    auto UICheckbox::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
 
     // ===== UIDropdown Setters =====
 
+    auto UIDropdown::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.dropdown.size())
+            return;
+        m_style = style_sheet.dropdown[index];
+        mark_dirty();
+    }
+
     auto UIDropdown::set_items(std::vector<std::wstring> items) -> void { m_items = std::move(items); mark_dirty(); }
     auto UIDropdown::set_selected(int idx) -> void { if (m_selected != idx) { m_selected = idx; mark_dirty(); } }
-    auto UIDropdown::set_hover_color(go::vu4 c) -> void { m_hover_color = c; mark_dirty(); }
-    auto UIDropdown::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
+    auto UIDropdown::set_hover_color(go::vu4 c) -> void { m_style.hover_color = c; mark_dirty(); }
+    auto UIDropdown::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
+    auto UIDropdown::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
+    auto UIDropdown::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
+    auto UIDropdown::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
+    auto UIDropdown::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
 
     // ===== UIPanel Setters =====
+
+    auto UIPanel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.panel.size())
+            return;
+        m_style = style_sheet.panel[index];
+        mark_dirty();
+    }
 
     auto UIPanel::set_layout(Layout l) -> void { if (m_layout != l) { m_layout = l; mark_dirty(); } }
     auto UIPanel::set_padding(float p) -> void { if (m_padding != p) { m_padding = p; mark_dirty(); } }
@@ -407,8 +469,20 @@ namespace engi::ui
             mark_dirty();
         }
     }
+    auto UIPanel::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
+    auto UIPanel::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
+    auto UIPanel::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
+    auto UIPanel::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
 
     // ===== UIExpandablePanel Setters =====
+
+    auto UIExpandablePanel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.expandable_panel.size())
+            return;
+        m_style = style_sheet.expandable_panel[index];
+        mark_dirty();
+    }
 
     auto UIExpandablePanel::set_header(std::wstring text) -> void { m_header = std::move(text); mark_dirty(); }
     auto UIExpandablePanel::set_expanded(bool expanded) -> void { if (m_expanded != expanded) { m_expanded = expanded; mark_dirty(); } }
@@ -443,8 +517,12 @@ namespace engi::ui
             mark_dirty();
         }
     }
-    auto UIExpandablePanel::set_header_bg_color(go::vu4 c) -> void { m_header_bg_color = c; mark_dirty(); }
-    auto UIExpandablePanel::set_text_color(go::vu4 c) -> void { m_text_color = c; mark_dirty(); }
+    auto UIExpandablePanel::set_header_bg_color(go::vu4 c) -> void { m_style.header_bg_color = c; mark_dirty(); }
+    auto UIExpandablePanel::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
+    auto UIExpandablePanel::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
+    auto UIExpandablePanel::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
+    auto UIExpandablePanel::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
+    auto UIExpandablePanel::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
 
     // ===== UILabel =====
 
@@ -461,8 +539,6 @@ namespace engi::ui
         if (!text_buf || !font_atlas) return;
 
         auto abs_pos = ctx.origin + m_position;
-        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
-        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
         auto font_h = static_cast<float>(font_atlas->get_x_height());
         auto text_w = static_cast<float>(font_atlas->calculate_line_width(m_text));
         auto text_x = abs_pos[0];
@@ -471,16 +547,14 @@ namespace engi::ui
         else if (m_align == UILabelAlign::Right)
             text_x = std::floor(abs_pos[0] + m_size[0] - text_w);
         auto text_y = std::floor(abs_pos[1] + (m_size[1] + font_h) * 0.5f);
-        text_buf->add(m_text, {text_x, text_y}, m_color);
+        text_buf->add(m_text, {text_x, text_y}, m_style.text_color);
     }
 
     // ===== UIButton =====
 
     UIButton::UIButton()
     {
-        set_draw_background(true);
-        set_draw_border(true);
-        set_border_color({100, 100, 130, 255});
+        m_style = Style{};
     }
 
     auto UIButton::on_event(UIEvent& ev) -> bool
@@ -519,13 +593,28 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        auto& col = m_pressed ? m_color_pressed : (m_hovered ? m_color_hover : m_color_normal);
-        draw_element_background(*this, ctx, abs_pos, m_size, col);
-        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
+        auto bg_color = m_style.bg_color;
+        auto border_color = m_style.border_color;
+        auto text_color = m_style.text_color;
+        if (m_pressed)
+        {
+            bg_color = m_style.pressed_bg_color;
+            border_color = m_style.pressed_border_color;
+            text_color = m_style.pressed_text_color;
+        }
+        else if (m_hovered)
+        {
+            bg_color = m_style.hover_bg_color;
+            border_color = m_style.hover_border_color;
+            text_color = m_style.hover_text_color;
+        }
+
+        draw_element_background(ctx, abs_pos, m_size, bg_color, m_style.draw_background);
+        draw_element_border(ctx, abs_pos, m_size, border_color, m_style.draw_border);
 
         auto text_pos = centered_single_line_text_pos(abs_pos, m_size, m_label, font_atlas);
         if (text_buf)
-            text_buf->add(m_label, text_pos, m_text_color);
+            text_buf->add(m_label, text_pos, text_color);
     }
 
     // ===== UITextInput =====
@@ -533,9 +622,9 @@ namespace engi::ui
     UITextInput::UITextInput()
     {
         set_draw_background(true);
-        set_bg_color({30, 30, 45, 255});
+        set_bg_color(color_darkgrey);
         set_draw_border(true);
-        set_border_color({80, 80, 110, 255});
+        set_border_color(color_lightgrey);
     }
 
     auto UITextInput::on_event(UIEvent& ev) -> bool
@@ -637,8 +726,12 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
-        draw_element_border(*this, ctx, abs_pos, m_size, m_focused ? go::vu4{120, 120, 200, 255} : get_border_color());
+        auto bg_color = m_focused ? m_style.active_bg_color : m_style.bg_color;
+        auto border_color = m_focused ? m_style.active_border_color : m_style.border_color;
+        auto text_color = m_focused ? m_style.active_text_color : m_style.text_color;
+
+        draw_element_background(ctx, abs_pos, m_size, bg_color, m_style.draw_background);
+        draw_element_border(ctx, abs_pos, m_size, border_color, m_style.draw_border);
 
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
         auto inner_w = std::max(0.0f, m_size[0] - k_text_edit_padding * 2.0f);
@@ -651,16 +744,16 @@ namespace engi::ui
         auto text_x = abs_pos[0] + k_text_edit_padding - m_scroll_x;
         auto text_y = std::floor(abs_pos[1] + (m_size[1] + cap_h) * 0.5f);
 
-        if (!draw_clipped_text(ctx, *this, abs_pos, m_size, m_text, {text_x, text_y}, m_text_color))
+        if (!draw_clipped_text(ctx, *this, abs_pos, m_size, m_text, {text_x, text_y}, text_color))
         {
             if (auto* text_buf = effective_text_buffer(*this, ctx); text_buf)
-                text_buf->add(m_text, {text_x, text_y}, m_text_color);
+            text_buf->add(m_text, {text_x, text_y}, text_color);
         }
 
         if (m_focused)
         {
             auto cursor_x = text_x + measure_prefix_width(m_text, m_cursor, font_atlas);
-            ctx.geo.add_rect({cursor_x, text_y - cap_h}, {2.0f, cap_h}, m_cursor_color);
+            ctx.geo.add_rect({cursor_x, text_y - cap_h}, {2.0f, cap_h}, m_style.cursor_color);
         }
     }
 
@@ -670,9 +763,9 @@ namespace engi::ui
     {
         m_size = {200.0f, 100.0f};
         set_draw_background(true);
-        set_bg_color({30, 30, 45, 255});
+        set_bg_color(color_darkgrey);
         set_draw_border(true);
-        set_border_color({80, 80, 110, 255});
+        set_border_color(color_lightgrey);
     }
 
     auto UITextArea::on_event(UIEvent& ev) -> bool
@@ -791,8 +884,12 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
-        draw_element_border(*this, ctx, abs_pos, m_size, m_focused ? go::vu4{120, 120, 200, 255} : get_border_color());
+        auto bg_color = m_focused ? m_style.active_bg_color : m_style.bg_color;
+        auto border_color = m_focused ? m_style.active_border_color : m_style.border_color;
+        auto text_color = m_focused ? m_style.active_text_color : m_style.text_color;
+
+        draw_element_background(ctx, abs_pos, m_size, bg_color, m_style.draw_background);
+        draw_element_border(ctx, abs_pos, m_size, border_color, m_style.draw_border);
 
         auto font_h = font_atlas ? static_cast<float>(font_atlas->get_x_height()) : 12.0f;
         auto cap_h = font_atlas ? static_cast<float>(font_atlas->get_cap_height()) : 12.0f;
@@ -808,17 +905,17 @@ namespace engi::ui
         auto text_x = abs_pos[0] + k_text_edit_padding - m_scroll_x;
         auto text_y = std::floor(abs_pos[1] + k_text_edit_padding + font_h - m_scroll_y);
 
-        if (!draw_clipped_text(ctx, *this, abs_pos, m_size, m_text, {text_x, text_y}, m_text_color))
+        if (!draw_clipped_text(ctx, *this, abs_pos, m_size, m_text, {text_x, text_y}, text_color))
         {
             if (auto* text_buf = effective_text_buffer(*this, ctx); text_buf)
-                text_buf->add(m_text, {text_x, text_y}, m_text_color);
+            text_buf->add(m_text, {text_x, text_y}, text_color);
         }
 
         if (m_focused)
         {
             auto cursor_x = text_x + cursor_pos[0];
             auto cursor_baseline = text_y + cursor_pos[1];
-            ctx.geo.add_rect({cursor_x, cursor_baseline - cap_h}, {2.0f, cap_h}, m_cursor_color);
+            ctx.geo.add_rect({cursor_x, cursor_baseline - cap_h}, {2.0f, cap_h}, m_style.cursor_color);
         }
     }
 
@@ -868,20 +965,17 @@ namespace engi::ui
         if (!m_visible) return;
         auto abs_pos = ctx.origin + m_position;
 
-        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
-        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
-
         auto track_height = 6.0f;
         auto track_y = abs_pos[1] + (m_size[1] - track_height) * 0.5f;
-        ctx.geo.add_rect({abs_pos[0], track_y}, {m_size[0], track_height}, m_track_color);
+        ctx.geo.add_rect({abs_pos[0], track_y}, {m_size[0], track_height}, m_style.track_color);
 
         auto range = m_max_val - m_min_val;
         auto ratio = range > 0.0f ? (m_value - m_min_val) / range : 0.0f;
         auto handle_w = 12.0f;
         auto handle_x = abs_pos[0] + ratio * (m_size[0] - handle_w);
-        ctx.geo.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, m_handle_color);
-        if (get_draw_border())
-            ctx.wire.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, go::vu4{140, 140, 200, 255});
+        ctx.geo.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, m_style.handle_bg_color);
+        if (m_style.draw_handle_border)
+            ctx.wire.add_rect({handle_x, abs_pos[1]}, {handle_w, m_size[1]}, m_style.handle_border_color);
     }
 
     // ===== UICheckbox =====
@@ -889,9 +983,7 @@ namespace engi::ui
     UICheckbox::UICheckbox()
     {
         m_size = {20.0f, 20.0f};
-        set_draw_background(true);
-        set_draw_border(true);
-        set_border_color({100, 100, 130, 255});
+        set_border_color(color_lightgrey);
     }
 
     auto UICheckbox::on_event(UIEvent& ev) -> bool
@@ -920,8 +1012,8 @@ namespace engi::ui
         auto abs_pos = ctx.origin + m_position;
         auto box_sz = go::vf2{m_size[1], m_size[1]};
 
-        draw_element_background(*this, ctx, abs_pos, box_sz, m_box_color);
-        draw_element_border(*this, ctx, abs_pos, box_sz, get_border_color());
+        ctx.geo.add_rect(abs_pos, box_sz, m_style.box_color);
+        ctx.wire.add_rect(abs_pos, box_sz, m_style.border_color);
 
         if (m_checked)
         {
@@ -929,7 +1021,7 @@ namespace engi::ui
             ctx.geo.add_rect(
                 {abs_pos[0] + inset, abs_pos[1] + inset},
                 {box_sz[0] - inset * 2.0f, box_sz[1] - inset * 2.0f},
-                m_check_color
+                m_style.check_color
             );
         }
 
@@ -939,7 +1031,7 @@ namespace engi::ui
             auto text_x = abs_pos[0] + box_sz[0] + 6.0f;
             auto text_y = std::floor(abs_pos[1] + (box_sz[1] + font_h) * 0.5f);
             if (text_buf)
-                text_buf->add(m_label, {text_x, text_y}, m_text_color);
+                text_buf->add(m_label, {text_x, text_y}, m_style.text_color);
         }
     }
 
@@ -948,9 +1040,9 @@ namespace engi::ui
     UIDropdown::UIDropdown()
     {
         set_draw_background(true);
-        set_bg_color({50, 50, 70, 255});
+        set_bg_color(color_darkgrey);
         set_draw_border(true);
-        set_border_color({100, 100, 130, 255});
+        set_border_color(color_lightgrey);
     }
 
     auto UIDropdown::on_event(UIEvent& ev) -> bool
@@ -1025,15 +1117,15 @@ namespace engi::ui
         auto* font_atlas = effective_font_atlas(*this, ctx);
         auto abs_pos = ctx.origin + m_position;
 
-        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
+        draw_element_background(ctx, abs_pos, m_size, get_bg_color(), m_style.draw_background);
         if (!m_open)
-            draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
+            draw_element_border(ctx, abs_pos, m_size, get_border_color(), m_style.draw_border);
 
         if (m_selected >= 0 && m_selected < static_cast<int>(m_items.size()))
         {
             auto text_pos = centered_single_line_text_pos(abs_pos, m_size, m_items[m_selected], font_atlas);
             if (text_buf)
-                text_buf->add(m_items[m_selected], text_pos, m_text_color);
+                text_buf->add(m_items[m_selected], text_pos, m_style.text_color);
         }
 
         auto arrow_center = go::vf2{abs_pos[0] + m_size[0] - 12.0f, abs_pos[1] + m_size[1] * 0.5f};
@@ -1046,14 +1138,14 @@ namespace engi::ui
             auto p0 = go::vf2{arrow_center[0] - half_w, arrow_center[1] + half_h};
             auto p1 = go::vf2{arrow_center[0] + half_w, arrow_center[1] + half_h};
             auto p2 = go::vf2{arrow_center[0], arrow_center[1] - half_h};
-            ctx.geo.add_triangle(p0, p1, p2, m_text_color);
+            ctx.geo.add_triangle(p0, p1, p2, m_style.text_color);
         }
         else
         {
             auto p0 = go::vf2{arrow_center[0] - half_w, arrow_center[1] - half_h};
             auto p1 = go::vf2{arrow_center[0] + half_w, arrow_center[1] - half_h};
             auto p2 = go::vf2{arrow_center[0], arrow_center[1] + half_h};
-            ctx.geo.add_triangle(p0, p1, p2, m_text_color);
+            ctx.geo.add_triangle(p0, p1, p2, m_style.text_color);
         }
 
         if (m_open)
@@ -1062,15 +1154,15 @@ namespace engi::ui
             for (int i = 0; i < static_cast<int>(m_items.size()); i++)
             {
                 auto iy = abs_pos[1] + m_size[1] + static_cast<float>(i) * item_height;
-                auto col = (i == m_hovered_item) ? m_hover_color : get_bg_color();
+                auto col = (i == m_hovered_item) ? m_style.hover_color : m_style.bg_color;
                 ctx.geo.add_rect({abs_pos[0], iy}, {m_size[0], item_height}, col);
                 auto item_pos = centered_single_line_text_pos(
                     {abs_pos[0], iy}, {m_size[0], item_height}, m_items[i], font_atlas);
                 if (text_buf)
-                    text_buf->add(m_items[i], item_pos, m_text_color);
+                    text_buf->add(m_items[i], item_pos, m_style.text_color);
             }
             auto open_size = go::vf2{m_size[0], m_size[1] * (static_cast<float>(m_items.size()) + 1.0f)};
-            draw_element_border(*this, ctx, abs_pos, open_size, get_border_color());
+            draw_element_border(ctx, abs_pos, open_size, get_border_color(), m_style.draw_border);
         }
     }
 
@@ -1078,8 +1170,8 @@ namespace engi::ui
 
     UIExpandablePanel::UIExpandablePanel()
     {
-        set_bg_color({30, 30, 45, 255});
-        set_border_color({100, 100, 130, 255});
+        set_bg_color(color_darkgrey);
+        set_border_color(color_lightgrey);
     }
 
     auto UIExpandablePanel::add(std::unique_ptr<UIElement> element) -> UIElement*
@@ -1269,7 +1361,7 @@ namespace engi::ui
         if (new_clip_size[0] <= 0.0f || new_clip_size[1] <= 0.0f)
             return;
 
-        ctx.geo.add_rect(abs_pos, {m_size[0], m_header_height}, m_header_bg_color);
+        ctx.geo.add_rect(abs_pos, {m_size[0], m_header_height}, m_style.header_bg_color);
 
         auto triangle_center = go::vf2{abs_pos[0] + m_padding + 5.0f, abs_pos[1] + m_header_height * 0.5f};
         auto side = std::max(6.0f, std::min(10.0f, m_header_height * 0.45f));
@@ -1281,14 +1373,14 @@ namespace engi::ui
             auto p0 = go::vf2{triangle_center[0] - half_w, triangle_center[1] - half_h};
             auto p1 = go::vf2{triangle_center[0] + half_w, triangle_center[1] - half_h};
             auto p2 = go::vf2{triangle_center[0], triangle_center[1] + half_h};
-            ctx.geo.add_triangle(p0, p1, p2, m_text_color);
+            ctx.geo.add_triangle(p0, p1, p2, m_style.text_color);
         }
         else
         {
             auto p0 = go::vf2{triangle_center[0] - half_h, triangle_center[1] - half_w};
             auto p1 = go::vf2{triangle_center[0] - half_h, triangle_center[1] + half_w};
             auto p2 = go::vf2{triangle_center[0] + half_h, triangle_center[1]};
-            ctx.geo.add_triangle(p0, p1, p2, m_text_color);
+            ctx.geo.add_triangle(p0, p1, p2, m_style.text_color);
         }
 
         if (!m_header.empty() && text_buf)
@@ -1296,10 +1388,10 @@ namespace engi::ui
             auto text_rect_pos = go::vf2{abs_pos[0] + m_padding + 12.0f, abs_pos[1]};
             auto text_rect_size = go::vf2{std::max(0.0f, m_size[0] - m_padding - 12.0f), m_header_height};
             auto text_pos = centered_single_line_text_pos(text_rect_pos, text_rect_size, m_header, font_atlas);
-            text_buf->add(m_header, text_pos, m_text_color);
+            text_buf->add(m_header, text_pos, m_style.text_color);
         }
 
-        if (m_expanded && should_draw_background(*this, get_bg_color()) && m_size[1] > m_header_height)
+        if (m_expanded && should_draw_background(m_style.draw_background, get_bg_color()) && m_size[1] > m_header_height)
         {
             ctx.geo.add_rect(
                 {abs_pos[0], abs_pos[1] + m_header_height},
@@ -1308,7 +1400,7 @@ namespace engi::ui
             );
         }
 
-        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
+        draw_element_border(ctx, abs_pos, m_size, get_border_color(), m_style.draw_border);
 
         if (!m_expanded)
             return;
@@ -1399,7 +1491,7 @@ namespace engi::ui
             ctx.geo.add_rect(
                 {abs_pos[0] + m_size[0] - k_panel_scrollbar_width, abs_pos[1] + m_header_height + travel * t},
                 {k_panel_scrollbar_width, thumb_h},
-                go::vu4{150, 150, 190, 190}
+                color_lightgrey
             );
         }
 
@@ -1551,8 +1643,8 @@ namespace engi::ui
         if (new_clip_size[0] <= 0.0f || new_clip_size[1] <= 0.0f)
             return;
 
-        draw_element_background(*this, ctx, abs_pos, m_size, get_bg_color());
-        draw_element_border(*this, ctx, abs_pos, m_size, get_border_color());
+        draw_element_background(ctx, abs_pos, m_size, get_bg_color(), m_style.draw_background);
+        draw_element_border(ctx, abs_pos, m_size, get_border_color(), m_style.draw_border);
 
         ctx.clip_pos = new_clip_pos;
         ctx.clip_size = new_clip_size;
@@ -1575,7 +1667,7 @@ namespace engi::ui
                 ctx.geo.add_rect(
                     {abs_pos[0] + m_size[0] - k_panel_scrollbar_width, abs_pos[1] + travel * t},
                     {k_panel_scrollbar_width, thumb_h},
-                    go::vu4{150, 150, 190, 190}
+                    color_lightgrey
                 );
             }
         }
@@ -1828,7 +1920,7 @@ namespace engi::ui
             .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
         };
 
-        if (should_draw_background(panel, panel.get_bg_color()))
+        if (should_draw_background(panel.m_style.draw_background, panel.get_bg_color()))
             panel_buf.geo.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.get_bg_color());
         if (panel.get_draw_border() && panel.get_border_color()[3] > 0)
             panel_buf.wire.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.get_border_color());
@@ -1869,7 +1961,7 @@ namespace engi::ui
                 panel_buf.scrollbar_geo.add_rect(
                     go::vf2{panel_abs_pos[0] + panel.m_size[0] - k_panel_scrollbar_width, panel_abs_pos[1] + travel * t} - clip_offset,
                     {k_panel_scrollbar_width, thumb_h},
-                    go::vu4{150, 150, 190, 190}
+                    color_lightgrey
                 );
             }
         }
