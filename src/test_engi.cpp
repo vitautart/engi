@@ -274,143 +274,143 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
         return;
 
     auto& root = m_ui.root();
-    root.layout = ui::Layout::Vertical;
-    root.padding = 10.0f;
-    root.spacing = 8.0f;
-    root.draw_background = true;
-    root.bg_color = {18, 18, 30, 180};
+    root.set_layout(ui::Layout::Vertical);
+    root.set_padding(10.0f);
+    root.set_spacing(8.0f);
+    root.set_draw_background(true);
+    root.set_bg_color({18, 18, 30, 180});
 
     auto* title = root.add_new<ui::UILabel>();
-    title->text = L"UI controls test";
-    title->color = {240, 200, 90, 255};
-    title->size = {220.0f, 20.0f};
+    title->set_text(L"UI controls test");
+    title->set_color({240, 200, 90, 255});
+    title->set_size({220.0f, 20.0f});
 
     auto* align_left = root.add_new<ui::UILabel>();
-    align_left->text = L"Left aligned label";
-    align_left->size = {220.0f, 18.0f};
-    align_left->align = ui::UILabelAlign::Left;
+    align_left->set_text(L"Left aligned label");
+    align_left->set_size({220.0f, 18.0f});
+    align_left->set_align(ui::UILabelAlign::Left);
 
     auto* align_center = root.add_new<ui::UILabel>();
-    align_center->text = L"Centered label";
-    align_center->size = {220.0f, 18.0f};
-    align_center->align = ui::UILabelAlign::Center;
+    align_center->set_text(L"Centered label");
+    align_center->set_size({220.0f, 18.0f});
+    align_center->set_align(ui::UILabelAlign::Center);
 
     auto* align_right = root.add_new<ui::UILabel>();
-    align_right->text = L"Right aligned label";
-    align_right->size = {220.0f, 18.0f};
-    align_right->align = ui::UILabelAlign::Right;
+    align_right->set_text(L"Right aligned label");
+    align_right->set_size({220.0f, 18.0f});
+    align_right->set_align(ui::UILabelAlign::Right);
 
     auto* main_panel = root.add_new<ui::UIPanel>();
-    main_panel->size = {220.0f, 116.0f};
-    main_panel->layout = ui::Layout::Horizontal;
-    main_panel->padding = 4.0f;
-    main_panel->spacing = 8.0f;
-    main_panel->draw_background = true;
-    main_panel->bg_color = {28, 28, 45, 220};
-    main_panel->draw_border = true;
-    main_panel->border_color = {110, 110, 140, 255};
+    main_panel->set_size({220.0f, 116.0f});
+    main_panel->set_layout(ui::Layout::Horizontal);
+    main_panel->set_padding(4.0f);
+    main_panel->set_spacing(8.0f);
+    main_panel->set_draw_background(true);
+    main_panel->set_bg_color({28, 28, 45, 220});
+    main_panel->set_draw_border(true);
+    main_panel->set_border_color({110, 110, 140, 255});
 
     auto* left_panel = main_panel->add_new<ui::UIPanel>();
-    left_panel->size = {100.0f, 100.0f};
-    left_panel->layout = ui::Layout::Vertical;
-    left_panel->padding = 4.0f;
-    left_panel->spacing = 4.0f;
-    left_panel->draw_background = true;
-    left_panel->bg_color = {38, 38, 58, 220};
-    left_panel->draw_border = true;
-    left_panel->border_color = {100, 100, 130, 255};
-    left_panel->scrollable = true;
+    left_panel->set_size({100.0f, 100.0f});
+    left_panel->set_layout(ui::Layout::Vertical);
+    left_panel->set_padding(4.0f);
+    left_panel->set_spacing(4.0f);
+    left_panel->set_draw_background(true);
+    left_panel->set_bg_color({38, 38, 58, 220});
+    left_panel->set_draw_border(true);
+    left_panel->set_border_color({100, 100, 130, 255});
+    left_panel->set_scrollable(true);
 
     auto* left_label = left_panel->add_new<ui::UILabel>();
-    left_label->text = L"Left";
-    left_label->size = {80.0f, 16.0f};
-    left_label->align = ui::UILabelAlign::Center;
+    left_label->set_text(L"Left");
+    left_label->set_size({80.0f, 16.0f});
+    left_label->set_align(ui::UILabelAlign::Center);
 
     auto* btn_hello = left_panel->add_new<ui::UIButton>();
-    btn_hello->label = L"Hello";
-    btn_hello->size = {92.0f, 20.0f};
+    btn_hello->set_label(L"Hello");
+    btn_hello->set_size({92.0f, 20.0f});
     btn_hello->on_click = [](){ std::println("[UI] Hello click"); };
 
     m_counter_label = root.add_new<ui::UILabel>();
-    m_counter_label->text = L"Clicks: 0";
-    m_counter_label->size = {220.0f, 18.0f};
+    m_counter_label->set_text(L"Clicks: 0");
+    m_counter_label->set_size({220.0f, 18.0f});
 
     auto* btn_count = left_panel->add_new<ui::UIButton>();
-    btn_count->label = L"Count";
-    btn_count->size = {92.0f, 20.0f};
-    btn_count->color_normal = {50, 80, 50, 255};
-    btn_count->color_hover = {70, 110, 70, 255};
-    btn_count->color_pressed = {30, 60, 30, 255};
+    btn_count->set_label(L"Count");
+    btn_count->set_size({92.0f, 20.0f});
+    btn_count->set_color_normal({50, 80, 50, 255});
+    btn_count->set_color_hover({70, 110, 70, 255});
+    btn_count->set_color_pressed({30, 60, 30, 255});
     btn_count->on_click = [this]()
     {
         m_click_count++;
-        m_counter_label->text = L"Clicks: " + std::to_wstring(m_click_count);
+        m_counter_label->set_text(L"Clicks: " + std::to_wstring(m_click_count));
     };
 
     auto* left_slider = left_panel->add_new<ui::UISlider>();
-    left_slider->size = {92.0f, 16.0f};
-    left_slider->value = 0.35f;
+    left_slider->set_size({92.0f, 16.0f});
+    left_slider->set_value(0.35f);
     left_slider->on_change = [](float v){ std::println("[UI] Left slider: {:.2f}", v); };
 
     auto* left_more_btn = left_panel->add_new<ui::UIButton>();
-    left_more_btn->label = L"More";
-    left_more_btn->size = {88.0f, 20.0f};
+    left_more_btn->set_label(L"More");
+    left_more_btn->set_size({88.0f, 20.0f});
     left_more_btn->on_click = [](){ std::println("[UI] Left more"); };
 
     auto* right_panel = main_panel->add_new<ui::UIPanel>();
-    right_panel->size = {100.0f, 100.0f};
-    right_panel->layout = ui::Layout::Vertical;
-    right_panel->padding = 4.0f;
-    right_panel->spacing = 4.0f;
-    right_panel->draw_background = true;
-    right_panel->bg_color = {38, 38, 58, 220};
-    right_panel->draw_border = true;
-    right_panel->border_color = {100, 100, 130, 255};
-    right_panel->scrollable = true;
+    right_panel->set_size({100.0f, 100.0f});
+    right_panel->set_layout(ui::Layout::Vertical);
+    right_panel->set_padding(4.0f);
+    right_panel->set_spacing(4.0f);
+    right_panel->set_draw_background(true);
+    right_panel->set_bg_color({38, 38, 58, 220});
+    right_panel->set_draw_border(true);
+    right_panel->set_border_color({100, 100, 130, 255});
+    right_panel->set_scrollable(true);
 
     auto* right_label = right_panel->add_new<ui::UILabel>();
-    right_label->text = L"Right";
-    right_label->size = {80.0f, 16.0f};
-    right_label->align = ui::UILabelAlign::Center;
+    right_label->set_text(L"Right");
+    right_label->set_size({80.0f, 16.0f});
+    right_label->set_align(ui::UILabelAlign::Center);
 
     auto* check = right_panel->add_new<ui::UICheckbox>();
-    check->label = L"On";
-    check->size = {92.0f, 18.0f};
-    check->checked = true;
+    check->set_label(L"On");
+    check->set_size({92.0f, 18.0f});
+    check->set_checked(true);
     check->on_change = [](bool v){ std::println("[UI] Checkbox: {}", v); };
 
     auto* input = right_panel->add_new<ui::UITextInput>();
-    input->size = {92.0f, 24.0f};
-    input->text = L"Input";
+    input->set_size({92.0f, 24.0f});
+    input->set_text(L"Input");
     input->on_change = [](const std::wstring& text)
     {
         std::println("[UI] Input size: {}", text.size());
     };
 
     auto* dropdown = right_panel->add_new<ui::UIDropdown>();
-    dropdown->size = {92.0f, 20.0f};
-    dropdown->items = {L"One", L"Two", L"Three"};
-    dropdown->selected = 0;
+    dropdown->set_size({92.0f, 20.0f});
+    dropdown->set_items({L"One", L"Two", L"Three"});
+    dropdown->set_selected(0);
     dropdown->on_change = [](int idx){ std::println("[UI] Dropdown: {}", idx); };
 
     auto* dd_btn1 = right_panel->add_new<ui::UIButton>();
-    dd_btn1->label = L"DD Btn 1";
-    dd_btn1->size = {92.0f, 20.0f};
+    dd_btn1->set_label(L"DD Btn 1");
+    dd_btn1->set_size({92.0f, 20.0f});
     dd_btn1->on_click = [](){ std::println("[UI] DD Btn 1"); };
 
     auto* dd_btn2 = right_panel->add_new<ui::UIButton>();
-    dd_btn2->label = L"DD Btn 2";
-    dd_btn2->size = {92.0f, 20.0f};
+    dd_btn2->set_label(L"DD Btn 2");
+    dd_btn2->set_size({92.0f, 20.0f});
     dd_btn2->on_click = [](){ std::println("[UI] DD Btn 2"); };
 
     auto* dd_btn3 = right_panel->add_new<ui::UIButton>();
-    dd_btn3->label = L"DD Btn 3";
-    dd_btn3->size = {92.0f, 20.0f};
+    dd_btn3->set_label(L"DD Btn 3");
+    dd_btn3->set_size({92.0f, 20.0f});
     dd_btn3->on_click = [](){ std::println("[UI] DD Btn 3"); };
 
     auto* text_area = root.add_new<ui::UITextArea>();
-    text_area->size = {220.0f, 90.0f};
-    text_area->text = L"TextArea\nType here";
+    text_area->set_size({220.0f, 90.0f});
+    text_area->set_text(L"TextArea\nType here");
     text_area->on_change = [](const std::wstring& text)
     {
         std::println("[UI] TextArea size: {}", text.size());
