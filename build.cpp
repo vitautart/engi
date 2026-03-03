@@ -42,7 +42,8 @@ static const std::array CPP_FILES =
     "src/static_buffer.cpp",
     "src/dynamic_buffer.cpp",
     "src/font_atlas.cpp",
-    "src/ui_system.cpp"
+    //"src/ui_system.cpp",
+    "src/ui_system_2.cpp",
 };
 
 #define GLFW_SRC "external/glfw/src/"

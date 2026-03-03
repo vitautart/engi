@@ -1,4 +1,4 @@
-#include "ui_system.hpp"
+//#include "ui_system.hpp"
 #include <test_engi.hpp>
 
 #include <GLFW/glfw3.h>
@@ -271,7 +271,8 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
         return;
     }
 
-    if (!m_ui.init(font_id))
+    //if (!m_ui.init(font_id))
+    if (!m_ui.init())
         return;
 
     ui::UIStyleSheet style_sheet;
@@ -347,7 +348,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
             .text_color = {255, 255, 255, 255}
         }
     };
-    style_sheet.expandable_panel = {
+    /*style_sheet.expandable_panel = {
         ui::UIExpandablePanel::Style{
             .draw_background = true,
             .draw_border = true,
@@ -356,7 +357,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
             .header_bg_color = {170, 40, 40, 255},
             .text_color = {255, 255, 255, 255}
         }
-    };
+    };*/
     style_sheet.panel = {
         ui::UIPanel::Style{
             .draw_background = true,
@@ -367,16 +368,70 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     };
 
     auto& root = m_ui.root();
+    root.applyStyleSheet(style_sheet, 0);
     root.set_layout(ui::Layout::Vertical);
     root.set_padding(10.0f);
     root.set_spacing(8.0f);
-    root.set_draw_background(true);
+    root.set_draw_background(false);
+    root.set_draw_border(false);
 
     auto* title = root.add_new<ui::UILabel>();
     title->set_text(L"UI controls test");
     title->set_size({220.0f, 20.0f});
+    title->set_font(font_id);
+    title->applyStyleSheet(style_sheet, 0);
 
-    auto* align_left = root.add_new<ui::UILabel>();
+    auto panel = root.add_new<ui::UIPanel>();
+    panel->set_size({220.0f, 200.0f});
+    panel->applyStyleSheet(style_sheet, 0);
+    panel->set_layout(ui::Layout::Vertical);
+    panel->set_padding(8.0f);
+    panel->set_spacing(8.0f);
+    panel->set_draw_background(true);
+    panel->set_draw_border(true);
+
+    auto btn1 = panel->add_new<ui::UIButton>();
+    btn1->set_label(L"Button 1");
+    btn1->set_size({200.0f, 24.0f});
+    btn1->set_font(font_id);
+    btn1->applyStyleSheet(style_sheet, 0);
+    btn1->on_click = [](){ std::println("[UI] Button 1 clicked"); };
+
+    auto input = panel->add_new<ui::UITextInput>();
+    input->set_size({200.0f, 24.0f});
+    input->set_font(font_id);
+    input->set_text(L"Type here");
+    input->applyStyleSheet(style_sheet, 0);
+    input->on_change = [](const std::wstring& text)
+    { std::println("[UI] Input text changed"); };
+
+    auto drop = panel->add_new<ui::UIDropdown>();
+    drop->set_size({200.0f, 24.0f});
+    drop->set_font(font_id);
+    drop->set_items({L"Option 1", L"Option 2", L"Option 3"});
+    drop->set_selected(0);
+    drop->applyStyleSheet(style_sheet, 0);
+    drop->on_change = [](int idx)
+    { std::println("[UI] Dropdown selected index: {}", idx); };
+
+    auto btn2 = panel->add_new<ui::UIButton>();
+    btn2->set_label(L"Button 2");
+    btn2->set_size({200.0f, 24.0f});
+    btn2->set_font(font_id);
+    btn2->applyStyleSheet(style_sheet, 0);
+    btn2->on_click = [](){ std::println("[UI] Button 2 clicked"); };
+
+    auto check = panel->add_new<ui::UICheckbox>();
+    check->set_size({200.0f, 24.0f});
+    check->set_font(font_id);
+    check->set_label(L"Check me");
+    check->set_checked(true);
+    check->applyStyleSheet(style_sheet, 0);
+    check->on_change = [](bool checked)
+    { std::println("[UI] Checkbox checked: {}", checked); };
+
+
+    /*auto* align_left = root.add_new<ui::UILabel>();
     align_left->set_text(L"Left aligned label");
     align_left->set_size({220.0f, 18.0f});
     align_left->set_align(ui::UILabelAlign::Left);
@@ -547,30 +602,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     text_area->on_change = [](const std::wstring& text)
     {
         std::println("[UI] TextArea size: {}", text.size());
-    };
-
-    auto apply_style_recursive = [](this auto&& self, ui::UIElement& element, size_t style_id, const ui::UIStyleSheet& style_sheet) -> void
-    {
-        element.applyStyleSheet(style_sheet, style_id);
-
-        if (element.element_type() == ui::ElementType::Panel)
-        {
-            auto& panel = static_cast<ui::UIPanel&>(element);
-            for (auto& child : panel.children())
-                self(*child, style_id, style_sheet);
-            return;
-        }
-
-        if (element.element_type() == ui::ElementType::ExpandablePanel)
-        {
-            auto& panel = static_cast<ui::UIExpandablePanel&>(element);
-            for (auto& child : panel.children())
-                self(*child, style_id, style_sheet);
-        }
-    };
-    apply_style_recursive(root, 0, style_sheet);
-    root.set_draw_background(false);
-    root.set_draw_border(false);
+    };*/
 
     std::println("[INFO] UI system initialized");
 }

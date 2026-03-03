@@ -8,10 +8,12 @@
 #include <pipeline.hpp>
 #include <rendering_overlay.hpp>
 #include <static_buffer.hpp>
-#include <ui_system.hpp>
+#include <ui_system_2.hpp>
 
 #include <chrono>
 #include <memory>
+
+namespace ui = engi::ui2;
 
 namespace engi
 {
