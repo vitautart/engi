@@ -381,7 +381,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     title->set_font(font_id);
     title->applyStyleSheet(style_sheet, 0);
 
-    auto panel = root.add_new<ui::UIPanel>();
+    auto panel = root.add_new<ui::UIPanel>(true);
     panel->set_size({220.0f, 200.0f});
     panel->applyStyleSheet(style_sheet, 0);
     panel->set_layout(ui::Layout::Vertical);
@@ -396,6 +396,20 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     btn1->set_font(font_id);
     btn1->applyStyleSheet(style_sheet, 0);
     btn1->on_click = [](){ std::println("[UI] Button 1 clicked"); };
+
+    auto btn3 = panel->add_new<ui::UIButton>();
+    btn3->set_label(L"Button 3");
+    btn3->set_size({200.0f, 24.0f});
+    btn3->set_font(font_id);
+    btn3->applyStyleSheet(style_sheet, 0);
+    btn3->on_click = [](){ std::println("[UI] Button 3 clicked"); };
+
+    auto btn4 = panel->add_new<ui::UIButton>();
+    btn4->set_label(L"Button 4");
+    btn4->set_size({200.0f, 24.0f});
+    btn4->set_font(font_id);
+    btn4->applyStyleSheet(style_sheet, 0);
+    btn4->on_click = [](){ std::println("[UI] Button 4 clicked"); };
 
     auto input = panel->add_new<ui::UITextInput>();
     input->set_size({200.0f, 24.0f});

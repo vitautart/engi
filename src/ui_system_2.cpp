@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <print>
 #include <vulkan/vulkan_core.h>
 
 namespace engi::ui2
@@ -640,7 +639,6 @@ namespace engi::ui2
     auto UIPanel::set_layout(Layout l) -> void { if (m_layout != l) { m_layout = l; mark_dirty(); } }
     auto UIPanel::set_padding(float p) -> void { if (m_padding != p) { m_padding = p; mark_dirty(); } }
     auto UIPanel::set_spacing(float s) -> void { if (m_spacing != s) { m_spacing = s; mark_dirty(); } }
-    auto UIPanel::set_scrollable(bool s) -> void { if (m_scrollable != s) { m_scrollable = s; mark_dirty(); } }
     auto UIPanel::set_scroll_offset(go::vf2 off) -> void
     {
         if (m_scroll_offset[0] != off[0] || m_scroll_offset[1] != off[1])
@@ -1751,28 +1749,74 @@ namespace engi::ui2
 
     auto UIPanel::add(std::unique_ptr<UIElement> element) -> UIElement*
     {
-        auto ptr = element.get();
-        ptr->m_parent = this;
-        m_children.push_back(std::move(element));
-        mark_dirty();
-        return ptr;
+        if (m_scrollable)
+        {
+            if (m_children.empty())
+            {
+                auto scroll_panel = std::make_unique<UIPanel>(false);
+                //scroll_panel->set_size(m_size - go::vf2{get_padding(), get_padding()});
+                scroll_panel->set_size(m_size);
+                scroll_panel->set_position({0, 0});
+                scroll_panel->set_draw_background(false);
+                scroll_panel->set_draw_border(false);
+                scroll_panel->set_padding(get_padding());
+                scroll_panel->set_spacing(get_spacing());
+                scroll_panel->m_parent = this;
+                scroll_panel->set_layout(get_layout());
+                m_children.push_back(std::move(scroll_panel));
+            }
+
+            auto* scroll_panel = static_cast<UIPanel*>(m_children.back().get());
+            auto ptr = element.get();
+            ptr->m_parent = scroll_panel;
+            scroll_panel->add(std::move(element));
+            mark_dirty();
+            return ptr;
+        }
+        else
+        {
+            element->m_parent = this;
+            m_children.push_back(std::move(element));
+            mark_dirty();
+            return m_children.back().get();
+        }
     }
 
     auto UIPanel::apply_layout() -> void
     {
-        if (m_layout == Layout::Free)
+        if (m_layout == Layout::Free || m_scrollable)
             return;
 
         auto cursor = go::vf2{m_padding, m_padding};
+        auto max_another_size = 0.0f;
         for (auto& child : m_children)
         {
             if (!child->m_visible) continue;
             child->set_position(cursor);
             if (m_layout == Layout::Horizontal)
+            {
                 cursor[0] += child->m_size[0] + m_spacing;
+                max_another_size = std::max(max_another_size, child->m_size[1]);
+            }
             else
+            {
                 cursor[1] += child->m_size[1] + m_spacing;
+                max_another_size = std::max(max_another_size, child->m_size[0]);
+            }
         }
+
+        if (m_layout == Layout::Horizontal)
+            m_size = 
+            { 
+                cursor[0] - m_spacing + m_padding, 
+                std::max(max_another_size + m_padding * 2.0f, m_size[1])
+            };
+        else
+            m_size = 
+            { 
+                std::max(max_another_size + m_padding * 2.0f, m_size[0]), 
+                cursor[1] - m_spacing + m_padding 
+            };
     }
 
     auto UIPanel::content_height() const -> float
@@ -1890,6 +1934,27 @@ namespace engi::ui2
 
         draw_element_background(ctx, go::vf2{0, 0}, m_size, get_bg_color(), m_style.draw_background, 0);
 
+        auto* child_ctx = &ctx;
+
+        if (m_scrollable)
+        {
+            auto max_scroll = max_scroll_y();
+            if (max_scroll > 0.0f)
+            {
+                auto solid_buff = effective_solid_buffer(ctx, 2);
+                if (solid_buff)
+                {
+                    auto content_h = content_height();
+                    auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, m_size[1] * (m_size[1] / content_h));
+                    auto travel = std::max(0.0f, m_size[1] - thumb_h);
+                    auto t = std::clamp(max_scroll > 0.0f ? (-m_scroll_offset[1] / max_scroll) : 0.0f, 0.0f, 1.0f);
+                    go::vf2 scroll_pos = {m_size[0] - k_panel_scrollbar_width, travel * t};
+                    go::vf2 scroll_size = {k_panel_scrollbar_width, thumb_h};
+                    solid_buff->add_rect(scroll_pos, scroll_size, color_lightgrey);
+                }
+            }
+        }
+
         for (auto& child : m_children)
         {
             if (!child->is_visible())
@@ -1898,54 +1963,16 @@ namespace engi::ui2
             {
                 auto panel = static_cast<UIPanel*>(child.get());
                 auto& panel_ctx = panel->get_draw_context();
-                panel_ctx.viewport = to_rect(panel->m_position + m_position, panel->m_size);
+                // TODO: need to clip this against parent ctx
+                panel_ctx.viewport = to_rect(panel->m_position + m_position + m_scroll_offset, panel->m_size);
+                panel_ctx.scissors = ctx.viewport;
                 panel->update(panel_ctx);
             }
             else
-                child->update(ctx);
+                child->update(*child_ctx);
         }
 
         draw_element_border(ctx, go::vf2{0, 0}, m_size, get_border_color(), m_style.draw_border, 2);
-
-        /*auto abs_pos = ctx.origin + m_position;
-        auto parent_clip_pos = ctx.clip_pos;
-        auto parent_clip_size = ctx.clip_size;
-        auto [new_clip_pos, new_clip_size] = clip_rect(abs_pos, m_size, parent_clip_pos, parent_clip_size);
-        if (new_clip_size[0] <= 0.0f || new_clip_size[1] <= 0.0f)
-            return;
-
-        draw_element_background(ctx, abs_pos, m_size, get_bg_color(), m_style.draw_background);
-        draw_element_border(ctx, abs_pos, m_size, get_border_color(), m_style.draw_border);
-
-        ctx.clip_pos = new_clip_pos;
-        ctx.clip_size = new_clip_size;
-
-        auto saved_origin = ctx.origin;
-        ctx.origin = {abs_pos[0] + m_scroll_offset[0], abs_pos[1] + m_scroll_offset[1]};
-
-        for (auto& child : m_children)
-            child->upload(ctx);
-
-        if (m_scrollable)
-        {
-            auto max_scroll = max_scroll_y();
-            if (max_scroll > 0.0f)
-            {
-                auto content_h = content_height();
-                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, m_size[1] * (m_size[1] / content_h));
-                auto travel = std::max(0.0f, m_size[1] - thumb_h);
-                auto t = std::clamp(max_scroll > 0.0f ? (-m_scroll_offset[1] / max_scroll) : 0.0f, 0.0f, 1.0f);
-                ctx.geo.add_rect(
-                    {abs_pos[0] + m_size[0] - k_panel_scrollbar_width, abs_pos[1] + travel * t},
-                    {k_panel_scrollbar_width, thumb_h},
-                    color_lightgrey
-                );
-            }
-        }
-
-        ctx.origin = saved_origin;
-        ctx.clip_pos = parent_clip_pos;
-        ctx.clip_size = parent_clip_size;*/
     }
 
     auto UIPanel::upload(VkCommandBuffer cmd) -> void
@@ -1968,55 +1995,58 @@ namespace engi::ui2
     {
         if (!m_visible) return;
 
-        VkRect2D viewport =
+        /*VkRect2D viewport =
         {
             .offset = {static_cast<int32_t>(m_position[0]), static_cast<int32_t>(m_position[1])},
             .extent = {static_cast<uint32_t>(m_size[0]), static_cast<uint32_t>(m_size[1])}
-        };
+        };*/
 
-        auto draw_pass = [](const DrawContext::Pass& pass, VkCommandBuffer cmd, vk::RenderingOverlay& overlay, const VkRect2D& viewport)
+        auto draw_pass = [](const DrawContext::Pass& pass, VkCommandBuffer cmd, 
+            vk::RenderingOverlay& overlay, const VkRect2D& viewport, const VkRect2D& scissors_main)
         {
-            //vkCmdSetScissor(cmd, 0, 1, &viewport);
+            vk::view_set(cmd, viewport);
+            vkCmdSetScissor(cmd, 0, 1, &scissors_main);
             overlay.start_draw_2d(cmd);
             if (pass.solid) overlay.draw(cmd, pass.solid.value(), viewport);
             for (const auto& [buff, scissors] : pass.solids)
             {
-                vkCmdSetScissor(cmd, 0, 1, &scissors);
+                auto intersected_scissor = rect_intersection(scissors_main, scissors);
+                vkCmdSetScissor(cmd, 0, 1, &intersected_scissor);
                 overlay.draw(cmd, buff, viewport);
             }
 
-            vkCmdSetScissor(cmd, 0, 1, &viewport);
+            //vkCmdSetScissor(cmd, 0, 1, &viewport);
+            vkCmdSetScissor(cmd, 0, 1, &scissors_main);
             overlay.start_text_draw(cmd);
             for (auto& buff : pass.text)
                 overlay.draw(cmd, buff, viewport);
             for (const auto& [buff, scissors] : pass.texts)
             {
-                vkCmdSetScissor(cmd, 0, 1, &scissors);
+                auto intersected_scissor = rect_intersection(scissors_main, scissors);
+                vkCmdSetScissor(cmd, 0, 1, &intersected_scissor);
                 overlay.draw(cmd, buff, viewport);
             }
 
-            vkCmdSetScissor(cmd, 0, 1, &viewport);
+            vkCmdSetScissor(cmd, 0, 1, &scissors_main);
             overlay.start_draw_2d_wire(cmd);
             if (pass.wire) overlay.draw(cmd, pass.wire.value(), viewport);
             for (const auto& [buff, scissors] : pass.wires)
             {
-                vkCmdSetScissor(cmd, 0, 1, &scissors);
+                auto intersected_scissor = rect_intersection(scissors_main, scissors);
+                vkCmdSetScissor(cmd, 0, 1, &intersected_scissor);
                 overlay.draw(cmd, buff, viewport);
             }
         };
 
-        vk::view_set(cmd, viewport);
-        draw_pass(m_draw_ctx.passes[0], cmd, overlay, viewport);
-
+        draw_pass(m_draw_ctx.passes[0], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
         for (auto& child : m_children)
         {
             if (child->is_visible() && child->element_type() == ElementType::Panel)
                 static_cast<UIPanel*>(child.get())->draw(cmd, overlay);
         }
 
-        vk::view_set(cmd, viewport);
-        draw_pass(m_draw_ctx.passes[1], cmd, overlay, viewport);
-        draw_pass(m_draw_ctx.passes[2], cmd, overlay, viewport);
+        draw_pass(m_draw_ctx.passes[1], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
+        draw_pass(m_draw_ctx.passes[2], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
     }
 
     // ===== UISystem =====
@@ -2313,9 +2343,6 @@ namespace engi::ui2
 
     auto UISystem::init() -> bool
     {
-        //m_font = font;
-        //if (!ensure_panel_buffers(1))
-        //    return false;
         m_initialized = true;
         return true;
     }
@@ -2375,68 +2402,10 @@ namespace engi::ui2
         m_root.set_size({static_cast<float>(viewport.extent.width), static_cast<float>(viewport.extent.height)});
         auto& root_ctx = m_root.get_draw_context();
         root_ctx.viewport = viewport;
+        root_ctx.scissors = viewport;
         m_root.update(root_ctx);
         m_root.upload(cmd);
         vk::cmd_sync_barriers(cmd);
-
-        /*m_root.m_position = {static_cast<float>(viewport.offset.x), static_cast<float>(viewport.offset.y)};
-        m_root.m_size = {static_cast<float>(viewport.extent.width), static_cast<float>(viewport.extent.height)};
-
-        auto needed = panel_count(m_root);
-        if (!ensure_panel_buffers(needed))
-            return;
-
-        m_used_panel_buffers = 0;
-        build_panel_buffers(m_root, m_root.m_position, viewport, m_used_panel_buffers);
-
-        for (size_t i = 0; i < m_used_panel_buffers; i++)
-        {
-            auto& pb = m_panel_buffers[i];
-            if (!pb.needs_upload)
-                continue;
-
-            auto upload_buffer = [](auto& buf, VkCommandBuffer cmd)
-            {
-                if (buf.index_count() > 0)
-                {
-                    if (auto r = buf.upload(cmd); r)
-                    {
-                        vk::add_vertex_buffer_write_barrier(buf.vertex_buffer());
-                        vk::add_index_buffer_write_barrier(buf.index_buffer());
-                    }
-                }
-            };
-
-            upload_buffer(pb.geo, cmd);
-            upload_buffer(pb.wire, cmd);
-            upload_buffer(pb.dropdown_geo, cmd);
-            upload_buffer(pb.dropdown_wire, cmd);
-            upload_buffer(pb.scrollbar_geo, cmd);
-            for (size_t ci = 0; ci < pb.clipped_geo_used; ci++)
-            {
-                auto& cg = pb.clipped_geo[ci];
-                if (cg.geo.has_value())
-                    upload_buffer(cg.geo.value(), cmd);
-                if (cg.wire.has_value())
-                    upload_buffer(cg.wire.value(), cmd);
-            }
-
-            auto upload_text = [](auto& text_buf, VkCommandBuffer cmd)
-            {
-                if (!text_buf.has_value() || text_buf->vertex_count() == 0) return;
-                if (auto r = text_buf->upload(cmd); r)
-                    vk::add_vertex_buffer_write_barrier(text_buf->vertex_buffer());
-            };
-
-            for (auto& tb : pb.text)
-                upload_text(tb, cmd);
-            for (auto& tb : pb.dropdown_text)
-                upload_text(tb, cmd);
-            for (size_t ci = 0; ci < pb.clipped_text_used; ci++)
-                upload_text(pb.clipped_text[ci].text, cmd);
-        }
-
-        vk::cmd_sync_barriers(cmd);*/
     }
 
     auto UISystem::draw(VkCommandBuffer cmd, vk::RenderingOverlay& overlay, const VkRect2D& viewport) -> void

@@ -104,7 +104,8 @@ namespace engi::ui2
         // passes[0] - main_pass for elements that don't need to be drawn on top of children
         // passes[1..] for things like dropdowns that should be drawn on top of children 
         std::array<Pass, 3> passes;
-        VkRect2D viewport = {};
+        VkRect2D viewport = {}; // TODO: need separate scissors and viewport to support scrolling
+        VkRect2D scissors = {};
     };
 
     class UIElement
@@ -177,6 +178,7 @@ namespace engi::ui2
         };
 
         UIPanel() = default;
+        UIPanel(bool scrollable) : m_scrollable(scrollable) {}
 
         auto on_event(UIEvent& ev) -> bool override;
         auto update(DrawContext& ctx) -> void override;
@@ -209,7 +211,6 @@ namespace engi::ui2
         auto set_spacing(float s) -> void;
         auto get_spacing() const noexcept -> float { return m_spacing; }
 
-        auto set_scrollable(bool s) -> void;
         auto is_scrollable() const noexcept -> bool { return m_scrollable; }
 
         auto set_scroll_offset(go::vf2 off) -> void;
@@ -244,6 +245,7 @@ namespace engi::ui2
         go::vf2 m_scroll_offset = {0.0f, 0.0f};
         Style m_style = {};
         DrawContext m_draw_ctx = {};
+        //DrawContext m_scroll_ctx = {};
 
         friend class UISystem;
     };
