@@ -62,8 +62,8 @@ namespace engi::ui2
     {
         return {
             .offset = {
-                .x = static_cast<int32_t>(std::max(0.0f, pos[0])),
-                .y = static_cast<int32_t>(std::max(0.0f, pos[1]))
+                .x = static_cast<int32_t>(pos[0]),
+                .y = static_cast<int32_t>(pos[1])
             },
             .extent = {
                 .width  = static_cast<uint32_t>(std::max(0.0f, size[0])),
@@ -371,31 +371,6 @@ namespace engi::ui2
         };
     }
 
-    // ===== Clipped Text Drawing Helper =====
-
-    /*static auto draw_clipped_text(
-        DrawContext& ctx, UIElement& el,
-        const go::vf2& abs_pos, const go::vf2& el_size,
-        std::wstring_view text, const go::vf2& text_pos, const go::vu4& color) -> bool
-    {
-        auto font = effective_font(el, ctx);
-        if (!ctx.resolve_clipped_text_buffer || !font.ptr)
-            return false;
-
-        auto content_fb_pos = abs_pos + ctx.clip_pos;
-        auto [clip_pos, clip_size] = clip_rect(content_fb_pos, el_size, ctx.clip_pos, ctx.clip_size);
-        if (clip_size[0] <= 0.0f || clip_size[1] <= 0.0f)
-            return false;
-
-        auto scissor = to_rect(clip_pos, clip_size);
-        auto* clipped_text = ctx.resolve_clipped_text_buffer(font, scissor);
-        if (!clipped_text)
-            return false;
-
-        clipped_text->add(text, text_pos, color);
-        return true;
-    }*/
-
     // ===== Scroll Cursor Tracking Helper =====
 
     static auto update_scroll_for_cursor(float cursor_px, float inner_extent, float max_scroll, float& scroll) -> void
@@ -411,7 +386,9 @@ namespace engi::ui2
     }
 
     static constexpr auto k_panel_scrollbar_width = 4.0f;
+    static constexpr auto k_panel_scrollbar_height = 4.0f;
     static constexpr auto k_panel_scrollbar_min_thumb_height = 12.0f;
+    static constexpr auto k_panel_scrollbar_min_thumb_width = 12.0f;
     static constexpr auto k_text_edit_padding = 4.0f;
 
     static auto should_draw_background(bool draw_background, const go::vu4& color) -> bool
@@ -644,6 +621,40 @@ namespace engi::ui2
 
     // ===== UIPanel Setters =====
 
+    UIScrollablePanel::UIScrollablePanel()
+    {
+        m_layout = Layout::Vertical;
+    }
+
+    auto UIScrollablePanel::ensure_content_panel() -> UIAutoPanel*
+    {
+        if (m_content_panel)
+            return m_content_panel;
+
+        auto proxy_el = std::make_unique<UIAutoPanel>();
+        proxy_el->set_position({0.0f, 0.0f});
+        proxy_el->set_draw_background(false);
+        proxy_el->set_draw_border(false);
+        proxy_el->set_layout(m_layout);
+        proxy_el->set_padding(m_padding);
+        proxy_el->set_spacing(m_spacing);
+        auto* proxy_ptr = proxy_el.get();
+        UIPanel::add(std::move(proxy_el));
+        m_content_panel = proxy_ptr;
+        return m_content_panel;
+    }
+
+    auto UIScrollablePanel::sync_content_panel() -> void
+    {
+        auto* proxy = ensure_content_panel();
+        if (!proxy)
+            return;
+        proxy->set_position({0.0f, 0.0f});
+        proxy->set_layout(m_layout);
+        proxy->set_padding(m_padding);
+        proxy->set_spacing(m_spacing);
+    }
+
     auto UIPanel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
     {
         if (index >= style_sheet.panel.size())
@@ -652,14 +663,31 @@ namespace engi::ui2
         mark_dirty();
     }
 
-    auto UIPanel::set_layout(Layout l) -> void { if (m_layout != l) { m_layout = l; mark_dirty(); } }
-    auto UIPanel::set_padding(float p) -> void { if (m_padding != p) { m_padding = p; mark_dirty(); } }
-    auto UIPanel::set_spacing(float s) -> void { if (m_spacing != s) { m_spacing = s; mark_dirty(); } }
-    auto UIPanel::set_scroll_offset(go::vf2 off) -> void
+    auto UIPanel::set_layout(Layout l) -> void
     {
-        if (m_scroll_offset[0] != off[0] || m_scroll_offset[1] != off[1])
+        if (!allow_layout(l))
+            return;
+        if (m_layout != l)
         {
-            m_scroll_offset = off;
+            m_layout = l;
+            mark_dirty();
+        }
+    }
+
+    auto UIPanel::set_padding(float p) -> void
+    {
+        if (m_padding != p)
+        {
+            m_padding = p;
+            mark_dirty();
+        }
+    }
+
+    auto UIPanel::set_spacing(float s) -> void
+    {
+        if (m_spacing != s)
+        {
+            m_spacing = s;
             mark_dirty();
         }
     }
@@ -668,56 +696,6 @@ namespace engi::ui2
     auto UIPanel::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
     auto UIPanel::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
 
-    // ===== UIExpandablePanel Setters =====
-/*
-    auto UIExpandablePanel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
-    {
-        if (index >= style_sheet.expandable_panel.size())
-            return;
-        m_style = style_sheet.expandable_panel[index];
-        mark_dirty();
-    }
-
-    auto UIExpandablePanel::set_header(std::wstring text) -> void { m_header = std::move(text); mark_dirty(); }
-    auto UIExpandablePanel::set_expanded(bool expanded) -> void { if (m_expanded != expanded) { m_expanded = expanded; mark_dirty(); } }
-    auto UIExpandablePanel::set_padding(float p) -> void { if (m_padding != p) { m_padding = p; mark_dirty(); } }
-    auto UIExpandablePanel::set_spacing(float s) -> void { if (m_spacing != s) { m_spacing = s; mark_dirty(); } }
-    auto UIExpandablePanel::set_header_height(float h) -> void
-    {
-        auto clamped_h = std::max(1.0f, h);
-        if (m_header_height != clamped_h)
-        {
-            m_header_height = clamped_h;
-            if (m_folded_height <= 0.0f)
-                m_folded_height = m_header_height;
-            mark_dirty();
-        }
-    }
-    auto UIExpandablePanel::set_expanded_height(float h) -> void
-    {
-        auto clamped_h = std::max(1.0f, h);
-        if (m_expanded_height != clamped_h)
-        {
-            m_expanded_height = clamped_h;
-            mark_dirty();
-        }
-    }
-    auto UIExpandablePanel::set_folded_height(float h) -> void
-    {
-        auto clamped_h = std::max(1.0f, h);
-        if (m_folded_height != clamped_h)
-        {
-            m_folded_height = clamped_h;
-            mark_dirty();
-        }
-    }
-    auto UIExpandablePanel::set_header_bg_color(go::vu4 c) -> void { m_style.header_bg_color = c; mark_dirty(); }
-    auto UIExpandablePanel::set_text_color(go::vu4 c) -> void { m_style.text_color = c; mark_dirty(); }
-    auto UIExpandablePanel::set_draw_background(bool v) -> void { if (m_style.draw_background != v) { m_style.draw_background = v; mark_dirty(); } }
-    auto UIExpandablePanel::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
-    auto UIExpandablePanel::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
-    auto UIExpandablePanel::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
-*/
     // ===== UILabel =====
 
     auto UILabel::on_event(UIEvent&) -> bool
@@ -1425,449 +1403,125 @@ namespace engi::ui2
         }
     }
 
-    // ===== UIPanel =====
-/*
-    UIExpandablePanel::UIExpandablePanel()
+    auto UIPanel::add(std::unique_ptr<UIElement> element) -> UIElement*
     {
-        set_bg_color(color_darkgrey);
-        set_border_color(color_lightgrey);
+        element->m_parent = this;
+        m_children.push_back(std::move(element));
+        mark_dirty();
+        return m_children.back().get();
     }
 
-    auto UIExpandablePanel::add(std::unique_ptr<UIElement> element) -> UIElement*
+    auto UIScrollablePanel::add(std::unique_ptr<UIElement> element) -> UIElement*
     {
-        auto ptr = element.get();
-        ptr->m_parent = this;
-        m_children.push_back(std::move(element));
+        auto* proxy = ensure_content_panel();
+        sync_content_panel();
+
+        auto* ptr = element.get();
+        proxy->add(std::move(element));
         mark_dirty();
         return ptr;
     }
 
-    auto UIExpandablePanel::apply_layout() -> void
+    auto UIScrollablePanel::set_scroll_offset(go::vf2 off) -> void
     {
-        sync_height_with_state();
-        clamp_scroll();
-        auto cursor = go::vf2{m_padding, m_header_height + m_padding};
-        for (auto& child : m_children)
+        if (m_scroll_offset[0] != off[0] || m_scroll_offset[1] != off[1])
         {
-            if (!child->m_visible)
-                continue;
-            child->set_position(cursor);
-            cursor[1] += child->m_size[1] + m_spacing;
-        }
-    }
-
-    auto UIExpandablePanel::content_height() const -> float
-    {
-        auto max_bottom = m_header_height + m_padding;
-        for (const auto& child : m_children)
-        {
-            if (!child->m_visible)
-                continue;
-            max_bottom = std::max(max_bottom, child->m_position[1] + child->m_size[1]);
-        }
-        return max_bottom + m_padding;
-    }
-
-    auto UIExpandablePanel::max_scroll_y() const -> float
-    {
-        if (!m_expanded)
-            return 0.0f;
-        auto content_view_h = std::max(0.0f, m_size[1] - m_header_height);
-        auto full_content_h = std::max(0.0f, content_height() - m_header_height);
-        return std::max(0.0f, full_content_h - content_view_h);
-    }
-
-    auto UIExpandablePanel::clamp_scroll() -> void
-    {
-        m_scroll_y = std::clamp(m_scroll_y, 0.0f, max_scroll_y());
-    }
-
-    auto UIExpandablePanel::sync_height_with_state() -> void
-    {
-        if (m_folded_height <= 0.0f)
-            m_folded_height = std::max(1.0f, m_header_height);
-
-        if (m_expanded_height <= 0.0f)
-            m_expanded_height = std::max(m_folded_height, m_size[1]);
-
-        m_folded_height = std::max(1.0f, m_folded_height);
-        m_expanded_height = std::max(m_folded_height, m_expanded_height);
-
-        auto target_h = m_expanded ? m_expanded_height : m_folded_height;
-        m_size[1] = target_h;
-    }
-
-    auto UIExpandablePanel::on_event(UIEvent& ev) -> bool
-    {
-        if (!m_visible || !m_enabled)
-            return false;
-
-        apply_layout();
-
-        auto local = go::vf2{ev.mouse_pos[0] - m_position[0], ev.mouse_pos[1] - m_position[1]};
-        auto inside = point_in_rect(local, {0.0f, 0.0f}, m_size);
-        auto inside_header = point_in_rect(local, {0.0f, 0.0f}, {m_size[0], m_header_height});
-
-        if (ev.type == EventType::MousePress && ev.button == 0 && inside_header)
-        {
-            m_expanded = !m_expanded;
-            sync_height_with_state();
+            m_scroll_offset = off;
             clamp_scroll();
-            ev.active_interaction_id = m_id;
-            ev.consumed = true;
             mark_dirty();
-            return true;
-        }
-
-        if (!m_expanded)
-        {
-            if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
-            {
-                ev.consumed = true;
-                return true;
-            }
-            return false;
-        }
-
-        auto content_inside = point_in_rect(local, {0.0f, m_header_height}, {m_size[0], std::max(0.0f, m_size[1] - m_header_height)});
-        if (ev.type == EventType::Scroll && content_inside)
-        {
-            auto max_scroll = max_scroll_y();
-            if (max_scroll > 0.0f)
-            {
-                m_scroll_y = std::clamp(m_scroll_y - ev.scroll_dy * 20.0f, 0.0f, max_scroll);
-                mark_dirty();
-                ev.consumed = true;
-                return true;
-            }
-        }
-
-        auto child_ev = ev;
-        child_ev.mouse_pos = {local[0], local[1] + m_scroll_y};
-
-        auto is_pointer_event =
-            ev.type == EventType::MouseMove ||
-            ev.type == EventType::MousePress ||
-            ev.type == EventType::MouseRelease ||
-            ev.type == EventType::Scroll;
-
-        if (is_pointer_event)
-        {
-            for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
-            {
-                if (!(*it)->m_visible)
-                    continue;
-                if ((*it)->element_type() != ElementType::Dropdown)
-                    continue;
-                auto* dropdown = static_cast<UIDropdown*>(it->get());
-                if (!dropdown->is_open())
-                    continue;
-                if ((*it)->on_event(child_ev))
-                {
-                    ev.consumed = child_ev.consumed;
-                    ev.active_interaction_id = child_ev.active_interaction_id;
-                    return true;
-                }
-            }
-        }
-
-        for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
-        {
-            if ((*it)->on_event(child_ev))
-            {
-                ev.consumed = child_ev.consumed;
-                ev.active_interaction_id = child_ev.active_interaction_id;
-                return true;
-            }
-        }
-
-        if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
-        {
-            ev.consumed = true;
-            return true;
-        }
-        return false;
-    }
-
-    auto UIExpandablePanel::clear_interaction_state_recursive(uint32_t keep_id) -> void
-    {
-        for (auto& child : m_children)
-        {
-            if (!child)
-                continue;
-            if (child->get_id() != keep_id)
-                child->clear_interaction_state();
-            if (child->element_type() == ElementType::Panel)
-                static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
-            if (child->element_type() == ElementType::ExpandablePanel)
-                static_cast<UIExpandablePanel*>(child.get())->clear_interaction_state_recursive(keep_id);
-        }
-    }
-
-    auto UIExpandablePanel::draw(DrawContext& ctx) -> void
-    {
-        if (!m_visible)
-            return;
-
-        apply_layout();
-
-        auto* text_buf = effective_text_buffer(*this, ctx);
-        auto* font_atlas = effective_font_atlas(*this, ctx);
-        auto abs_pos = ctx.origin + m_position;
-        auto parent_clip_pos = ctx.clip_pos;
-        auto parent_clip_size = ctx.clip_size;
-        auto [new_clip_pos, new_clip_size] = clip_rect(abs_pos, m_size, parent_clip_pos, parent_clip_size);
-        if (new_clip_size[0] <= 0.0f || new_clip_size[1] <= 0.0f)
-            return;
-
-        ctx.geo.add_rect(abs_pos, {m_size[0], m_header_height}, m_style.header_bg_color);
-
-        auto triangle_center = go::vf2{abs_pos[0] + m_padding + 5.0f, abs_pos[1] + m_header_height * 0.5f};
-        auto side = std::max(6.0f, std::min(10.0f, m_header_height * 0.45f));
-        auto half_w = side * 0.5f;
-        auto half_h = side * 0.5f * std::sqrt(3.0f) * 0.5f;
-
-        if (m_expanded)
-        {
-            auto p0 = go::vf2{triangle_center[0] - half_w, triangle_center[1] - half_h};
-            auto p1 = go::vf2{triangle_center[0] + half_w, triangle_center[1] - half_h};
-            auto p2 = go::vf2{triangle_center[0], triangle_center[1] + half_h};
-            ctx.geo.add_triangle(p0, p1, p2, m_style.text_color);
-        }
-        else
-        {
-            auto p0 = go::vf2{triangle_center[0] - half_h, triangle_center[1] - half_w};
-            auto p1 = go::vf2{triangle_center[0] - half_h, triangle_center[1] + half_w};
-            auto p2 = go::vf2{triangle_center[0] + half_h, triangle_center[1]};
-            ctx.geo.add_triangle(p0, p1, p2, m_style.text_color);
-        }
-
-        if (!m_header.empty() && text_buf)
-        {
-            auto text_rect_pos = go::vf2{abs_pos[0] + m_padding + 12.0f, abs_pos[1]};
-            auto text_rect_size = go::vf2{std::max(0.0f, m_size[0] - m_padding - 12.0f), m_header_height};
-            auto text_pos = centered_single_line_text_pos(text_rect_pos, text_rect_size, m_header, font_atlas);
-            text_buf->add(m_header, text_pos, m_style.text_color);
-        }
-
-        if (m_expanded && should_draw_background(m_style.draw_background, get_bg_color()) && m_size[1] > m_header_height)
-        {
-            ctx.geo.add_rect(
-                {abs_pos[0], abs_pos[1] + m_header_height},
-                {m_size[0], std::max(0.0f, m_size[1] - m_header_height)},
-                get_bg_color()
-            );
-        }
-
-        draw_element_border(ctx, abs_pos, m_size, get_border_color(), m_style.draw_border);
-
-        if (!m_expanded)
-            return;
-
-        auto content_abs_pos = go::vf2{abs_pos[0], abs_pos[1] + m_header_height};
-        auto content_abs_size = go::vf2{m_size[0], std::max(0.0f, m_size[1] - m_header_height)};
-        auto [content_clip_pos, content_clip_size] = clip_rect(content_abs_pos, content_abs_size, new_clip_pos, new_clip_size);
-        if (content_clip_size[0] <= 0.0f || content_clip_size[1] <= 0.0f)
-            return;
-
-        auto content_scissor = to_rect(content_clip_pos, content_clip_size);
-
-        auto* clipped_geo = ctx.resolve_clipped_geo_buffer ? ctx.resolve_clipped_geo_buffer(content_scissor) : nullptr;
-        auto* clipped_wire = ctx.resolve_clipped_wire_buffer ? ctx.resolve_clipped_wire_buffer(content_scissor) : nullptr;
-
-        auto* child_geo = clipped_geo ? clipped_geo : &ctx.geo;
-        auto* child_wire = clipped_wire ? clipped_wire : &ctx.wire;
-
-        auto child_text_resolve = [&ctx, content_scissor](vk::FontId font) -> vk::TextBuffer*
-        {
-            if (ctx.resolve_clipped_text_buffer)
-                return ctx.resolve_clipped_text_buffer(font, content_scissor);
-            if (ctx.resolve_text_buffer)
-                return ctx.resolve_text_buffer(font);
-            return nullptr;
-        };
-
-        auto child_clipped_text_resolve = [&ctx](vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*
-        {
-            if (!ctx.resolve_clipped_text_buffer)
-                return nullptr;
-            return ctx.resolve_clipped_text_buffer(font, scissor);
-        };
-
-        auto child_clipped_geo_resolve = [&ctx](const VkRect2D& scissor) -> vk::GeometryBuffer2D*
-        {
-            if (!ctx.resolve_clipped_geo_buffer)
-                return nullptr;
-            return ctx.resolve_clipped_geo_buffer(scissor);
-        };
-
-        auto child_clipped_wire_resolve = [&ctx](const VkRect2D& scissor) -> vk::GeometryBuffer2DWire*
-        {
-            if (!ctx.resolve_clipped_wire_buffer)
-                return nullptr;
-            return ctx.resolve_clipped_wire_buffer(scissor);
-        };
-
-        auto child_ctx = DrawContext{
-            .geo = *child_geo,
-            .wire = *child_wire,
-            .resolve_text_buffer = child_text_resolve,
-            .resolve_clipped_text_buffer = child_clipped_text_resolve,
-            .resolve_clipped_geo_buffer = child_clipped_geo_resolve,
-            .resolve_clipped_wire_buffer = child_clipped_wire_resolve,
-            .default_font = ctx.default_font,
-            .origin = {abs_pos[0], abs_pos[1] - m_scroll_y},
-            .clip_pos = content_clip_pos,
-            .clip_size = content_clip_size
-        };
-
-        for (auto& child : m_children)
-        {
-            if (!child->is_visible())
-                continue;
-            if (child->element_type() == ElementType::Dropdown)
-                continue;
-            child->draw(child_ctx);
-        }
-
-        for (auto& child : m_children)
-        {
-            if (!child->is_visible())
-                continue;
-            if (child->element_type() != ElementType::Dropdown)
-                continue;
-            child->draw(child_ctx);
-        }
-
-        auto max_scroll = max_scroll_y();
-        if (max_scroll > 0.0f)
-        {
-            auto content_view_h = std::max(0.0f, m_size[1] - m_header_height);
-            auto full_content_h = std::max(0.0f, content_height() - m_header_height);
-            auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, content_view_h * (content_view_h / full_content_h));
-            auto travel = std::max(0.0f, content_view_h - thumb_h);
-            auto t = std::clamp(m_scroll_y / max_scroll, 0.0f, 1.0f);
-            ctx.geo.add_rect(
-                {abs_pos[0] + m_size[0] - k_panel_scrollbar_width, abs_pos[1] + m_header_height + travel * t},
-                {k_panel_scrollbar_width, thumb_h},
-                color_lightgrey
-            );
-        }
-
-        ctx.clip_pos = parent_clip_pos;
-        ctx.clip_size = parent_clip_size;
-    }*/
-
-    auto UIPanel::add(std::unique_ptr<UIElement> element) -> UIElement*
-    {
-        if (m_scrollable)
-        {
-            if (m_children.empty())
-            {
-                auto scroll_panel = std::make_unique<UIPanel>(false);
-                scroll_panel->set_size(m_size);
-                scroll_panel->set_position({0, 0});
-                scroll_panel->set_draw_background(false);
-                scroll_panel->set_draw_border(false);
-                scroll_panel->set_padding(get_padding());
-                scroll_panel->set_spacing(get_spacing());
-                scroll_panel->m_parent = this;
-                scroll_panel->set_layout(get_layout());
-                m_children.push_back(std::move(scroll_panel));
-            }
-
-            auto* scroll_panel = static_cast<UIPanel*>(m_children.back().get());
-            auto ptr = element.get();
-            ptr->m_parent = scroll_panel;
-            scroll_panel->add(std::move(element));
-            mark_dirty();
-            return ptr;
-        }
-        else
-        {
-            element->m_parent = this;
-            m_children.push_back(std::move(element));
-            mark_dirty();
-            return m_children.back().get();
         }
     }
 
     auto UIPanel::apply_layout() -> void
     {
-        if (m_layout == Layout::Free || m_scrollable)
-            return;
-
-        auto cursor = go::vf2{m_padding, m_padding};
-        auto max_another_size = 0.0f;
-        for (auto& child : m_children)
+        if (m_layout == Layout::Horizontal || m_layout == Layout::Vertical)
         {
-            if (!child->m_visible) continue;
-            child->set_position(cursor);
-            if (m_layout == Layout::Horizontal)
+            auto cursor = go::vf2{m_padding, m_padding};
+            for (auto& child : m_children)
             {
-                cursor[0] += child->m_size[0] + m_spacing;
-                max_another_size = std::max(max_another_size, child->m_size[1]);
-            }
-            else
-            {
-                cursor[1] += child->m_size[1] + m_spacing;
-                max_another_size = std::max(max_another_size, child->m_size[0]);
+                if (!child->m_visible)
+                    continue;
+                child->set_position(cursor);
+                if (m_layout == Layout::Horizontal)
+                    cursor[0] += child->m_size[0] + m_spacing;
+                else
+                    cursor[1] += child->m_size[1] + m_spacing;
             }
         }
-
-        if (m_layout == Layout::Horizontal)
-            m_size = 
-            { 
-                cursor[0] - m_spacing + m_padding, 
-                std::max(max_another_size + m_padding * 2.0f, m_size[1])
-            };
-        else
-            m_size = 
-            { 
-                std::max(max_another_size + m_padding * 2.0f, m_size[0]), 
-                cursor[1] - m_spacing + m_padding 
-            };
     }
 
-    auto UIPanel::content_height() const -> float
+    auto UIAutoPanel::apply_layout() -> void
     {
+        UIPanel::apply_layout();
+        m_size = content_size();
+    }
+
+    auto UIAutoPanel::update(DrawContext& ctx) -> void
+    {
+        UIPanel::update(ctx);
+    }
+
+    auto UIPanel::content_size() const -> go::vf2
+    {
+        auto max_right = m_padding;
         auto max_bottom = m_padding;
         for (const auto& child : m_children)
         {
             if (!child->is_visible())
                 continue;
+            max_right = std::max(max_right, child->m_position[0] + child->m_size[0]);
             max_bottom = std::max(max_bottom, child->m_position[1] + child->m_size[1]);
         }
-        return max_bottom + m_padding;
+        return {
+            max_right + m_padding,
+            max_bottom + m_padding
+        };
     }
 
-    auto UIPanel::max_scroll_y() const -> float
+    auto UIScrollablePanel::max_scroll_offset() const -> go::vf2
     {
-        if (!m_scrollable)
-            return 0.0f;
-        return std::max(0.0f, content_height() - m_size[1]);
+        auto* proxy = m_content_panel;
+        if (!proxy)
+            return {0.0f, 0.0f};
+
+        auto content = proxy->get_size();
+        auto max_x = 0.0f;
+        auto max_y = 0.0f;
+        if (m_layout == Layout::Horizontal)
+            max_x = std::max(0.0f, content[0] - m_size[0]);
+        else if (m_layout == Layout::Vertical)
+            max_y = std::max(0.0f, content[1] - m_size[1]);
+        return {max_x, max_y};
     }
 
-    auto UIPanel::clamp_scroll() -> void
+    auto UIScrollablePanel::clamp_scroll() -> void
     {
-        auto max_scroll = max_scroll_y();
-        m_scroll_offset[0] = 0.0f;
-        m_scroll_offset[1] = std::clamp(m_scroll_offset[1], -max_scroll, 0.0f);
+        auto max_scroll = max_scroll_offset();
+        m_scroll_offset[0] = std::clamp(m_scroll_offset[0], -max_scroll[0], 0.0f);
+        m_scroll_offset[1] = std::clamp(m_scroll_offset[1], -max_scroll[1], 0.0f);
     }
 
-    auto UIPanel::on_event(UIEvent& ev) -> bool
+    auto UIScrollablePanel::on_event(UIEvent& ev) -> bool
     {
-        if (!m_visible || !m_enabled) return false;
-
-        apply_layout();
+        sync_content_panel();
         clamp_scroll();
+
+        if (!m_visible || !m_enabled) return false;
 
         auto local = go::vf2{ev.mouse_pos[0] - m_position[0], ev.mouse_pos[1] - m_position[1]};
         auto inside = point_in_rect(local, {0, 0}, m_size);
 
-        if (ev.type == EventType::Scroll && m_scrollable && inside)
+        if (ev.type == EventType::Scroll && inside)
         {
-            m_scroll_offset[1] += ev.scroll_dy * 20.0f;
+            if (m_layout == Layout::Horizontal)
+            {
+                auto delta = std::abs(ev.scroll_dx) > std::abs(ev.scroll_dy) ? ev.scroll_dx : ev.scroll_dy;
+                m_scroll_offset[0] += delta * 20.0f;
+            }
+            else
+            {
+                m_scroll_offset[1] += ev.scroll_dy * 20.0f;
+            }
             clamp_scroll();
             mark_dirty();
             ev.consumed = true;
@@ -1919,6 +1573,59 @@ namespace engi::ui2
         return false;
     }
 
+    auto UIPanel::on_event(UIEvent& ev) -> bool
+    {
+        if (!m_visible || !m_enabled) return false;
+
+        apply_layout();
+
+        auto local = go::vf2{ev.mouse_pos[0] - m_position[0], ev.mouse_pos[1] - m_position[1]};
+        auto inside = point_in_rect(local, {0, 0}, m_size);
+
+        auto child_ev = ev;
+        child_ev.mouse_pos = local;
+
+        auto is_pointer_event =
+            ev.type == EventType::MouseMove ||
+            ev.type == EventType::MousePress ||
+            ev.type == EventType::MouseRelease ||
+            ev.type == EventType::Scroll;
+
+        if (is_pointer_event)
+        {
+            for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+            {
+                if (!(*it)->is_visible()) continue;
+                if ((*it)->element_type() != ElementType::Dropdown) continue;
+                auto* dropdown = static_cast<UIDropdown*>(it->get());
+                if (!dropdown->is_open()) continue;
+                if ((*it)->on_event(child_ev))
+                {
+                    ev.consumed = child_ev.consumed;
+                    ev.active_interaction_id = child_ev.active_interaction_id;
+                    return true;
+                }
+            }
+        }
+
+        for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+        {
+            if ((*it)->on_event(child_ev))
+            {
+                ev.consumed = child_ev.consumed;
+                ev.active_interaction_id = child_ev.active_interaction_id;
+                return true;
+            }
+        }
+
+        if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
+        {
+            ev.consumed = true;
+            return true;
+        }
+        return false;
+    }
+
     auto UIPanel::clear_interaction_state_recursive(uint32_t keep_id) -> void
     {
         for (auto& child : m_children)
@@ -1926,7 +1633,6 @@ namespace engi::ui2
             if (!child) continue;
             if (child->get_id() != keep_id)
                 child->clear_interaction_state();
-            // TODO: replace with is_drawable_element
             if (child->element_type() == ElementType::Panel)
                 static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
             //if (child->element_type() == ElementType::ExpandablePanel)
@@ -1939,32 +1645,12 @@ namespace engi::ui2
         if (!m_visible) return;
 
         apply_layout();
-        clamp_scroll();
 
         clear_draw_context(ctx);
 
         draw_element_background(ctx, go::vf2{0, 0}, m_size, get_bg_color(), m_style.draw_background, 0);
 
         auto* child_ctx = &ctx;
-
-        if (m_scrollable)
-        {
-            auto max_scroll = max_scroll_y();
-            if (max_scroll > 0.0f)
-            {
-                auto solid_buff = effective_solid_buffer(ctx, 2);
-                if (solid_buff)
-                {
-                    auto content_h = content_height();
-                    auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, m_size[1] * (m_size[1] / content_h));
-                    auto travel = std::max(0.0f, m_size[1] - thumb_h);
-                    auto t = std::clamp(max_scroll > 0.0f ? (-m_scroll_offset[1] / max_scroll) : 0.0f, 0.0f, 1.0f);
-                    go::vf2 scroll_pos = {m_size[0] - k_panel_scrollbar_width, travel * t};
-                    go::vf2 scroll_size = {k_panel_scrollbar_width, thumb_h};
-                    solid_buff->add_rect(scroll_pos, scroll_size, color_lightgrey);
-                }
-            }
-        }
 
         for (auto& child : m_children)
         {
@@ -1973,7 +1659,7 @@ namespace engi::ui2
             if (auto panel = cast_drawable(child.get()); panel != nullptr)
             {
                 auto& panel_ctx = panel->get_draw_context();
-                panel_ctx.viewport = to_rect(panel->m_position + m_position + m_scroll_offset, panel->m_size);
+                panel_ctx.viewport = to_rect(panel->m_position + m_position, panel->m_size);
                 panel_ctx.scissors = ctx.viewport;
                 panel->update(panel_ctx);
             }
@@ -1982,6 +1668,70 @@ namespace engi::ui2
         }
 
         draw_element_border(ctx, go::vf2{0, 0}, m_size, get_border_color(), m_style.draw_border, 2);
+    }
+
+    auto UIScrollablePanel::update(DrawContext& ctx) -> void
+    {
+        sync_content_panel();
+        clamp_scroll();
+
+        if (!m_visible) return;
+
+        clear_draw_context(ctx);
+        draw_element_background(ctx, go::vf2{0, 0}, m_size, get_bg_color(), m_style.draw_background, 0);
+
+        for (auto& child : m_children)
+        {
+            if (!child->is_visible())
+                continue;
+            if (auto panel = cast_drawable(child.get()); panel != nullptr)
+            {
+                auto& panel_ctx = panel->get_draw_context();
+                panel_ctx.viewport = to_rect(panel->get_position() + m_position + m_scroll_offset, panel->get_size());
+                panel_ctx.scissors = ctx.viewport;
+                panel->update(panel_ctx);
+            }
+            else
+                child->update(ctx);
+        }
+
+        draw_element_border(ctx, go::vf2{0, 0}, m_size, get_border_color(), m_style.draw_border, 2);
+
+
+        auto max_scroll = max_scroll_offset();
+        auto content = m_content_panel ? m_content_panel->get_size() : go::vf2{0.0f, 0.0f};
+
+        if (max_scroll[1] > 0.0f)
+        {
+            auto solid_buff = effective_solid_buffer(ctx, 2);
+            if (solid_buff)
+            {
+                auto content_h = content[1];
+                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, m_size[1] * (m_size[1] / content_h));
+                thumb_h = std::min(thumb_h, m_size[1]);
+                auto travel = std::max(0.0f, m_size[1] - thumb_h);
+                auto t = std::clamp(max_scroll[1] > 0.0f ? (-m_scroll_offset[1] / max_scroll[1]) : 0.0f, 0.0f, 1.0f);
+                go::vf2 scroll_pos = {m_size[0] - k_panel_scrollbar_width, travel * t};
+                go::vf2 scroll_size = {k_panel_scrollbar_width, thumb_h};
+                solid_buff->add_rect(scroll_pos, scroll_size, color_lightgrey);
+            }
+        }
+
+        if (max_scroll[0] > 0.0f)
+        {
+            auto solid_buff = effective_solid_buffer(ctx, 2);
+            if (solid_buff)
+            {
+                auto content_w = content[0];
+                auto thumb_w = std::max(k_panel_scrollbar_min_thumb_width, m_size[0] * (m_size[0] / content_w));
+                thumb_w = std::min(thumb_w, m_size[0]);
+                auto travel = std::max(0.0f, m_size[0] - thumb_w);
+                auto t = std::clamp(max_scroll[0] > 0.0f ? (-m_scroll_offset[0] / max_scroll[0]) : 0.0f, 0.0f, 1.0f);
+                go::vf2 scroll_pos = {travel * t, m_size[1] - k_panel_scrollbar_height};
+                go::vf2 scroll_size = {thumb_w, k_panel_scrollbar_height};
+                solid_buff->add_rect(scroll_pos, scroll_size, color_lightgrey);
+            }
+        }
     }
 
     auto UIPanel::upload(VkCommandBuffer cmd) -> void
@@ -2006,35 +1756,35 @@ namespace engi::ui2
         auto draw_pass = [](const DrawContext::Pass& pass, VkCommandBuffer cmd, 
             vk::RenderingOverlay& overlay, const VkRect2D& viewport, const VkRect2D& scissors_main)
         {
-            vk::view_set(cmd, viewport);
-            vkCmdSetScissor(cmd, 0, 1, &scissors_main);
+            vk::viewport_set(cmd, viewport);
+            vk::scissors_set(cmd, scissors_main);
             overlay.start_draw_2d(cmd);
             if (pass.solid) overlay.draw(cmd, pass.solid.value(), viewport);
             for (const auto& [buff, scissors] : pass.solids)
             {
                 auto intersected_scissor = rect_intersection(scissors_main, scissors);
-                vkCmdSetScissor(cmd, 0, 1, &intersected_scissor);
+                vk::scissors_set(cmd, intersected_scissor);
                 overlay.draw(cmd, buff, viewport);
             }
 
-            vkCmdSetScissor(cmd, 0, 1, &scissors_main);
+            vk::scissors_set(cmd, scissors_main);
             overlay.start_text_draw(cmd);
             for (auto& buff : pass.text)
                 overlay.draw(cmd, buff, viewport);
             for (const auto& [buff, scissors] : pass.texts)
             {
                 auto intersected_scissor = rect_intersection(scissors_main, scissors);
-                vkCmdSetScissor(cmd, 0, 1, &intersected_scissor);
+                vk::scissors_set(cmd, intersected_scissor);
                 overlay.draw(cmd, buff, viewport);
             }
 
-            vkCmdSetScissor(cmd, 0, 1, &scissors_main);
+            vk::scissors_set(cmd, scissors_main);
             overlay.start_draw_2d_wire(cmd);
             if (pass.wire) overlay.draw(cmd, pass.wire.value(), viewport);
             for (const auto& [buff, scissors] : pass.wires)
             {
                 auto intersected_scissor = rect_intersection(scissors_main, scissors);
-                vkCmdSetScissor(cmd, 0, 1, &intersected_scissor);
+                vk::scissors_set(cmd, intersected_scissor);
                 overlay.draw(cmd, buff, viewport);
             }
         };
@@ -2051,298 +1801,6 @@ namespace engi::ui2
         draw_pass(m_draw_ctx.passes[1], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
         draw_pass(m_draw_ctx.passes[2], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
     }
-
-    // ===== UISystem =====
-
-    /*auto UISystem::panel_count(const UIPanel& panel) const -> size_t
-    {
-        auto count = size_t{1};
-        for (const auto& child : panel.children())
-        {
-            if (!child->is_visible()) continue;
-            if (child->element_type() == ElementType::Panel)
-                count += panel_count(static_cast<const UIPanel&>(*child));
-        }
-        return count;
-    }
-
-    auto UISystem::ensure_panel_buffers(size_t count) -> bool
-    {
-        if (m_panel_buffers.size() >= count)
-            return true;
-
-        while (m_panel_buffers.size() < count)
-        {
-            auto geo_res = vk::GeometryBuffer2D::create();
-            auto wire_res = vk::GeometryBuffer2DWire::create();
-            auto dropdown_geo_res = vk::GeometryBuffer2D::create();
-            auto dropdown_wire_res = vk::GeometryBuffer2DWire::create();
-            auto scrollbar_geo_res = vk::GeometryBuffer2D::create();
-
-            if (!geo_res || !wire_res || !dropdown_geo_res || !dropdown_wire_res || !scrollbar_geo_res)
-            {
-                std::println("[ERROR] UISystem: failed to create panel buffers");
-                return false;
-            }
-
-            m_panel_buffers.push_back(PanelDrawBuffers{
-                .geo = std::move(geo_res.value()),
-                .wire = std::move(wire_res.value()),
-                .dropdown_geo = std::move(dropdown_geo_res.value()),
-                .dropdown_wire = std::move(dropdown_wire_res.value()),
-                .scrollbar_geo = std::move(scrollbar_geo_res.value())
-            });
-        }
-        return true;
-    }
-
-    auto UISystem::ensure_panel_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*
-    {
-        if (!font.ptr)
-            return nullptr;
-        auto font_index = static_cast<size_t>(font.font_index);
-        if (panel_buf.text.size() <= font_index)
-            panel_buf.text.resize(font_index + 1);
-        auto& entry = panel_buf.text[font_index];
-        if (!entry.has_value())
-        {
-            auto res = vk::TextBuffer::create(font);
-            if (!res) { std::println("[ERROR] UISystem: failed to create TextBuffer"); return nullptr; }
-            entry = std::move(res.value());
-        }
-        return &entry.value();
-    }
-
-    auto UISystem::ensure_panel_clipped_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer*
-    {
-        if (!font.ptr)
-            return nullptr;
-        auto entry_id = panel_buf.clipped_text_used++;
-        if (panel_buf.clipped_text.size() <= entry_id)
-            panel_buf.clipped_text.emplace_back();
-        auto& entry = panel_buf.clipped_text[entry_id];
-        entry.scissor = scissor;
-        if (!entry.text.has_value() || entry.text->font_index() != font.font_index)
-        {
-            auto res = vk::TextBuffer::create(font);
-            if (!res) { std::println("[ERROR] UISystem: failed to create clipped TextBuffer"); return nullptr; }
-            entry.text = std::move(res.value());
-        }
-        return &entry.text.value();
-    }
-
-    auto UISystem::ensure_panel_clipped_geo_buffer(PanelDrawBuffers& panel_buf, const VkRect2D& scissor) -> vk::GeometryBuffer2D*
-    {
-        auto entry_id = panel_buf.clipped_geo_used++;
-        if (panel_buf.clipped_geo.size() <= entry_id)
-            panel_buf.clipped_geo.emplace_back();
-        auto& entry = panel_buf.clipped_geo[entry_id];
-        entry.scissor = scissor;
-        if (!entry.geo.has_value())
-        {
-            auto res = vk::GeometryBuffer2D::create();
-            if (!res)
-            {
-                std::println("[ERROR] UISystem: failed to create clipped GeometryBuffer2D");
-                return nullptr;
-            }
-            entry.geo = std::move(res.value());
-        }
-        return &entry.geo.value();
-    }
-
-    auto UISystem::ensure_panel_clipped_wire_buffer(PanelDrawBuffers& panel_buf, const VkRect2D& scissor) -> vk::GeometryBuffer2DWire*
-    {
-        if (panel_buf.clipped_geo_used == 0)
-            return nullptr;
-        auto entry_id = panel_buf.clipped_geo_used - 1;
-        if (panel_buf.clipped_geo.size() <= entry_id)
-            return nullptr;
-        auto& entry = panel_buf.clipped_geo[entry_id];
-        entry.scissor = scissor;
-        if (!entry.wire.has_value())
-        {
-            auto res = vk::GeometryBuffer2DWire::create();
-            if (!res)
-            {
-                std::println("[ERROR] UISystem: failed to create clipped GeometryBuffer2DWire");
-                return nullptr;
-            }
-            entry.wire = std::move(res.value());
-        }
-        return &entry.wire.value();
-    }
-
-    auto UISystem::ensure_panel_dropdown_text_buffer(PanelDrawBuffers& panel_buf, vk::FontId font) -> vk::TextBuffer*
-    {
-        if (!font.ptr)
-            return nullptr;
-        auto font_index = static_cast<size_t>(font.font_index);
-        if (panel_buf.dropdown_text.size() <= font_index)
-            panel_buf.dropdown_text.resize(font_index + 1);
-        auto& entry = panel_buf.dropdown_text[font_index];
-        if (!entry.has_value())
-        {
-            auto res = vk::TextBuffer::create(font);
-            if (!res) { std::println("[ERROR] UISystem: failed to create dropdown TextBuffer"); return nullptr; }
-            entry = std::move(res.value());
-        }
-        return &entry.value();
-    }
-
-    auto UISystem::skip_panel_ids(const UIPanel& panel, size_t& panel_id) -> void
-    {
-        panel_id++;
-        for (const auto& child : panel.children())
-        {
-            if (!child->is_visible()) continue;
-            if (child->element_type() == ElementType::Panel)
-                skip_panel_ids(static_cast<const UIPanel&>(*child), panel_id);
-        }
-    }
-
-    auto UISystem::build_panel_buffers(UIPanel& panel, const go::vf2& panel_abs_pos, const VkRect2D& parent_clip, size_t& panel_id) -> void
-    {
-        panel.apply_layout();
-        panel.clamp_scroll();
-
-        auto panel_rect = to_rect(panel_abs_pos, panel.m_size);
-        auto panel_clip = rect_intersection(parent_clip, panel_rect);
-
-        auto& panel_buf = m_panel_buffers[panel_id];
-
-        // Skip rebuild if panel content is clean and position hasn't moved
-        auto pos_changed = panel_buf.last_abs_pos[0] != panel_abs_pos[0] || panel_buf.last_abs_pos[1] != panel_abs_pos[1];
-        if (!panel.is_dirty() && !pos_changed)
-        {
-            panel_buf.needs_upload = false;
-            skip_panel_ids(panel, panel_id);
-            return;
-        }
-
-        panel_buf.last_abs_pos = panel_abs_pos;
-        panel_buf.needs_upload = true;
-        panel_id++;
-
-        panel_buf.view = panel_clip;
-        panel_buf.geo.clear();
-        panel_buf.wire.clear();
-        panel_buf.clipped_text_used = 0;
-        panel_buf.clipped_geo_used = 0;
-        panel_buf.dropdown_geo.clear();
-        panel_buf.dropdown_wire.clear();
-        panel_buf.scrollbar_geo.clear();
-        for (auto& tb : panel_buf.text)
-            if (tb.has_value()) tb->clear();
-        for (auto& tb : panel_buf.dropdown_text)
-            if (tb.has_value()) tb->clear();
-        for (auto& ct : panel_buf.clipped_text)
-            if (ct.text.has_value()) ct.text->clear();
-        for (auto& cg : panel_buf.clipped_geo)
-        {
-            if (cg.geo.has_value()) cg.geo->clear();
-            if (cg.wire.has_value()) cg.wire->clear();
-        }
-
-        if (panel_clip.extent.width == 0 || panel_clip.extent.height == 0)
-        {
-            panel.clear_dirty();
-            return;
-        }
-
-        auto clip_offset = go::vf2{static_cast<float>(panel_clip.offset.x), static_cast<float>(panel_clip.offset.y)};
-        auto child_origin = panel_abs_pos + panel.m_scroll_offset;
-
-        auto panel_ctx = DrawContext{
-            .geo = panel_buf.geo,
-            .wire = panel_buf.wire,
-            .resolve_text_buffer = [this, &panel_buf](vk::FontId font) -> vk::TextBuffer* {
-                return ensure_panel_text_buffer(panel_buf, font);
-            },
-            .resolve_clipped_text_buffer = [this, &panel_buf](vk::FontId font, const VkRect2D& scissor) -> vk::TextBuffer* {
-                return ensure_panel_clipped_text_buffer(panel_buf, font, scissor);
-            },
-            .resolve_clipped_geo_buffer = [this, &panel_buf](const VkRect2D& scissor) -> vk::GeometryBuffer2D* {
-                return ensure_panel_clipped_geo_buffer(panel_buf, scissor);
-            },
-            .resolve_clipped_wire_buffer = [this, &panel_buf](const VkRect2D& scissor) -> vk::GeometryBuffer2DWire* {
-                return ensure_panel_clipped_wire_buffer(panel_buf, scissor);
-            },
-            .default_font = m_font,
-            .origin = child_origin - clip_offset,
-            .clip_pos = clip_offset,
-            .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
-        };
-
-        auto dropdown_ctx = DrawContext{
-            .geo = panel_buf.dropdown_geo,
-            .wire = panel_buf.dropdown_wire,
-            .resolve_text_buffer = [this, &panel_buf](vk::FontId font) -> vk::TextBuffer* {
-                return ensure_panel_dropdown_text_buffer(panel_buf, font);
-            },
-            .resolve_clipped_text_buffer = [](vk::FontId, const VkRect2D&) -> vk::TextBuffer* {
-                return nullptr;
-            },
-            .resolve_clipped_geo_buffer = [](const VkRect2D&) -> vk::GeometryBuffer2D* {
-                return nullptr;
-            },
-            .resolve_clipped_wire_buffer = [](const VkRect2D&) -> vk::GeometryBuffer2DWire* {
-                return nullptr;
-            },
-            .default_font = m_font,
-            .origin = child_origin - clip_offset,
-            .clip_pos = clip_offset,
-            .clip_size = {static_cast<float>(panel_clip.extent.width), static_cast<float>(panel_clip.extent.height)}
-        };
-
-        if (should_draw_background(panel.m_style.draw_background, panel.get_bg_color()))
-            panel_buf.geo.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.get_bg_color());
-        if (panel.get_draw_border() && panel.get_border_color()[3] > 0)
-            panel_buf.wire.add_rect(panel_abs_pos - clip_offset, panel.m_size, panel.get_border_color());
-
-        // Draw non-panel, non-dropdown children
-        for (auto& child : panel.children())
-        {
-            if (!child->is_visible()) continue;
-            if (child->element_type() == ElementType::Panel)
-            {
-                auto* child_panel = static_cast<UIPanel*>(child.get());
-                build_panel_buffers(*child_panel, child_origin + child_panel->m_position, panel_clip, panel_id);
-            }
-            else if (child->element_type() != ElementType::Dropdown)
-            {
-                child->draw(panel_ctx);
-            }
-        }
-
-        // Draw dropdowns on top
-        for (auto& child : panel.children())
-        {
-            if (!child->is_visible()) continue;
-            if (child->element_type() == ElementType::Dropdown)
-                child->draw(dropdown_ctx);
-        }
-
-        // Draw scrollbar
-        if (panel.m_scrollable)
-        {
-            auto max_scroll = panel.max_scroll_y();
-            if (max_scroll > 0.0f)
-            {
-                auto content_h = panel.content_height();
-                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, panel.m_size[1] * (panel.m_size[1] / content_h));
-                auto travel = std::max(0.0f, panel.m_size[1] - thumb_h);
-                auto t = std::clamp(max_scroll > 0.0f ? (-panel.m_scroll_offset[1] / max_scroll) : 0.0f, 0.0f, 1.0f);
-                panel_buf.scrollbar_geo.add_rect(
-                    go::vf2{panel_abs_pos[0] + panel.m_size[0] - k_panel_scrollbar_width, panel_abs_pos[1] + travel * t} - clip_offset,
-                    {k_panel_scrollbar_width, thumb_h},
-                    color_lightgrey
-                );
-            }
-        }
-
-        panel.clear_dirty();
-    }*/
 
     auto UISystem::init() -> bool
     {

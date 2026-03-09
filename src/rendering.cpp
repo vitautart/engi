@@ -1347,11 +1347,22 @@ auto engi::vk::draw_start(
     };
 
     vkCmdBeginRendering(cmd, &renderingInfo);
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-    vkCmdSetScissor(cmd, 0, 1, &view);
+    viewport_set(cmd, view);
+    scissors_set(cmd, view);
 }
     
 auto engi::vk::view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void
+{
+    viewport_set(cmd, view);
+    scissors_set(cmd, view);
+}
+
+auto engi::vk::scissors_set(VkCommandBuffer cmd, const VkRect2D& view) -> void
+{
+    vkCmdSetScissor(cmd, 0, 1, &view);
+}
+
+auto engi::vk::viewport_set(VkCommandBuffer cmd, const VkRect2D& view) -> void
 {
     VkViewport viewport = 
     {
@@ -1363,7 +1374,6 @@ auto engi::vk::view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void
         .maxDepth = 1.0f
     };
     vkCmdSetViewport(cmd, 0, 1, &viewport);
-    vkCmdSetScissor(cmd, 0, 1, &view);
 }
 
 auto engi::vk::draw_end(VkCommandBuffer cmd) -> void

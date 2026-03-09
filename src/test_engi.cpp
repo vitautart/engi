@@ -387,7 +387,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     title->set_size({220.0f, 20.0f});
     title->applyStyleSheet(style_sheet, 0);
 
-    auto panel = root.add_new<ui::UIPanel>(true);
+    auto panel = root.add_new<ui::UIScrollablePanel>();
     panel->set_size({220.0f, 200.0f});
     panel->applyStyleSheet(style_sheet, 0);
     panel->set_layout(ui::Layout::Vertical);
@@ -442,6 +442,65 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     check->applyStyleSheet(style_sheet, 0);
     check->on_change = [](bool checked)
     { std::println("[UI] Checkbox checked: {}", checked); };
+
+    auto hpanel = root.add_new<ui::UIScrollablePanel>();
+    hpanel->set_size({220.0f, 42.0f});
+    hpanel->applyStyleSheet(style_sheet, 0);
+    hpanel->set_layout(ui::Layout::Horizontal);
+    hpanel->set_padding(6.0f);
+    hpanel->set_spacing(6.0f);
+    hpanel->set_draw_background(true);
+    hpanel->set_draw_border(true);
+
+    auto hbtn1 = hpanel->add_new<ui::UIButton>();
+    hbtn1->set_label(L"H Button 1");
+    hbtn1->set_size({110.0f, 24.0f});
+    hbtn1->applyStyleSheet(style_sheet, 0);
+    hbtn1->on_click = [](){ std::println("[UI] H Button 1 clicked"); };
+
+    auto hbtn2 = hpanel->add_new<ui::UIButton>();
+    hbtn2->set_label(L"H Button 2");
+    hbtn2->set_size({110.0f, 24.0f});
+    hbtn2->applyStyleSheet(style_sheet, 0);
+    hbtn2->on_click = [](){ std::println("[UI] H Button 2 clicked"); };
+
+    auto hbtn3 = hpanel->add_new<ui::UIButton>();
+    hbtn3->set_label(L"H Button 3");
+    hbtn3->set_size({110.0f, 24.0f});
+    hbtn3->applyStyleSheet(style_sheet, 0);
+    hbtn3->on_click = [](){ std::println("[UI] H Button 3 clicked"); };
+
+    auto hbtn4 = hpanel->add_new<ui::UIButton>();
+    hbtn4->set_label(L"H Button 4");
+    hbtn4->set_size({110.0f, 24.0f});
+    hbtn4->applyStyleSheet(style_sheet, 0);
+    hbtn4->on_click = [](){ std::println("[UI] H Button 4 clicked"); };
+
+    auto hbtn5 = hpanel->add_new<ui::UIButton>();
+    hbtn5->set_label(L"H Button 5");
+    hbtn5->set_size({110.0f, 24.0f});
+    hbtn5->applyStyleSheet(style_sheet, 0);
+    hbtn5->on_click = [](){ std::println("[UI] H Button 5 clicked"); };
+
+    auto auto_hpanel = root.add_new<ui::UIAutoPanel>();
+    auto_hpanel->applyStyleSheet(style_sheet, 0);
+    auto_hpanel->set_layout(ui::Layout::Horizontal);
+    auto_hpanel->set_padding(8.0f);
+    auto_hpanel->set_spacing(8.0f);
+    auto_hpanel->set_draw_background(true);
+    auto_hpanel->set_draw_border(true);
+
+    auto auto_hbtn1 = auto_hpanel->add_new<ui::UIButton>();
+    auto_hbtn1->set_label(L"Auto H1");
+    auto_hbtn1->set_size({90.0f, 24.0f});
+    auto_hbtn1->applyStyleSheet(style_sheet, 0);
+    auto_hbtn1->on_click = [](){ std::println("[UI] Auto H1 clicked"); };
+
+    auto auto_hbtn2 = auto_hpanel->add_new<ui::UIButton>();
+    auto_hbtn2->set_label(L"Auto H2");
+    auto_hbtn2->set_size({90.0f, 24.0f});
+    auto_hbtn2->applyStyleSheet(style_sheet, 0);
+    auto_hbtn2->on_click = [](){ std::println("[UI] Auto H2 clicked"); };
 
 
     /*auto* align_left = root.add_new<ui::UILabel>();

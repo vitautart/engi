@@ -170,7 +170,6 @@ namespace engi::ui2
     {
     public:
         UIPanel() = default;
-        UIPanel(bool scrollable) : m_scrollable(scrollable) {}
 
         auto on_event(UIEvent& ev) -> bool override;
         auto update(DrawContext& ctx) -> void override;
@@ -180,7 +179,7 @@ namespace engi::ui2
         auto applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void override;
         auto element_type() const -> ElementType override { return ElementType::Panel; }
 
-        auto add(std::unique_ptr<UIElement> element) -> UIElement*;
+        virtual auto add(std::unique_ptr<UIElement> element) -> UIElement*;
 
         template<typename T, typename... Args>
         auto add_new(Args&&... args) -> T*
@@ -203,11 +202,6 @@ namespace engi::ui2
         auto set_spacing(float s) -> void;
         auto get_spacing() const noexcept -> float { return m_spacing; }
 
-        auto is_scrollable() const noexcept -> bool { return m_scrollable; }
-
-        auto set_scroll_offset(go::vf2 off) -> void;
-        auto get_scroll_offset() const noexcept -> go::vf2 { return m_scroll_offset; }
-
         auto set_draw_background(bool v) -> void;
         auto get_draw_background() const noexcept -> bool { return m_style.draw_background; }
 
@@ -220,22 +214,54 @@ namespace engi::ui2
         auto set_border_color(go::vu4 c) -> void;
         auto get_border_color() const noexcept -> go::vu4 { return m_style.border_color; }
 
-    private:
-        auto apply_layout() -> void;
-        auto content_height() const -> float;
-        auto max_scroll_y() const -> float;
-        auto clamp_scroll() -> void;
+    protected:
+        virtual auto allow_layout(Layout l) const noexcept -> bool { return l == Layout::Free || l == Layout::Horizontal || l == Layout::Vertical; }
+
+    protected:
+        virtual auto apply_layout() -> void;
+        auto content_size() const -> go::vf2;
+
         auto clear_interaction_state_recursive(uint32_t keep_id) -> void;
 
         std::vector<std::unique_ptr<UIElement>> m_children;
         Layout m_layout = Layout::Free;
         float m_padding = 4.0f;
         float m_spacing = 4.0f;
-        bool m_scrollable = false;
-        go::vf2 m_scroll_offset = {0.0f, 0.0f};
         UIPanelStyle m_style = {};
 
         friend class UISystem;
+    };
+
+    class UIAutoPanel : public UIPanel
+    {
+    public:
+        UIAutoPanel() = default;
+        auto update(DrawContext& ctx) -> void override;
+    protected:
+        auto apply_layout() -> void override;
+    };
+
+    class UIScrollablePanel : public UIPanel
+    {
+    public:
+        UIScrollablePanel();
+        auto add(std::unique_ptr<UIElement> element) -> UIElement* override;
+        auto on_event(UIEvent& ev) -> bool override;
+        auto set_scroll_offset(go::vf2 off) -> void;
+        auto get_scroll_offset() const noexcept -> go::vf2 { return m_scroll_offset; }
+        auto update(DrawContext& ctx) -> void override;
+
+    protected:
+        auto allow_layout(Layout l) const noexcept -> bool override { return l == Layout::Horizontal || l == Layout::Vertical; }
+
+    private:
+        auto ensure_content_panel() -> UIAutoPanel*;
+        auto sync_content_panel() -> void;
+        auto max_scroll_offset() const -> go::vf2;
+        auto clamp_scroll() -> void;
+
+        UIAutoPanel* m_content_panel = nullptr;
+        go::vf2 m_scroll_offset = {0.0f, 0.0f};
     };
 
     // ===== UILabel =====

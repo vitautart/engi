@@ -107,6 +107,8 @@ namespace engi::vk
         VkAttachmentLoadOp depthLoadOp,
         VkAttachmentStoreOp depthStoreOp) -> void;
     auto view_set(VkCommandBuffer cmd, const VkRect2D& view) -> void;
+    auto scissors_set(VkCommandBuffer cmd, const VkRect2D& view) -> void;
+    auto viewport_set(VkCommandBuffer cmd, const VkRect2D& view) -> void;
     auto draw_end(VkCommandBuffer cmd) -> void;
     auto cmd_end() -> void;
     auto submit() -> bool;
