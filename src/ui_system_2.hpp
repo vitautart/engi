@@ -11,13 +11,10 @@
 
 #include "gomath.hpp"
 #include "rendering_overlay.hpp"
+#include "ui_system_styles.hpp"
 
 namespace engi::ui2
 {
-    inline constexpr auto color_darkgrey = go::vu4{64, 64, 64, 255};
-    inline constexpr auto color_lightgrey = go::vu4{192, 192, 192, 255};
-    inline constexpr auto color_white = go::vu4{255, 255, 255, 255};
-
     // ===== GLFW Key Constants =====
 
     namespace keys
@@ -87,7 +84,6 @@ namespace engi::ui2
     auto next_element_id() -> uint32_t;
 
     class UIPanel;
-    class UIStyleSheet;
 
     struct DrawContext
     {
@@ -104,7 +100,7 @@ namespace engi::ui2
         // passes[0] - main_pass for elements that don't need to be drawn on top of children
         // passes[1..] for things like dropdowns that should be drawn on top of children 
         std::array<Pass, 3> passes;
-        VkRect2D viewport = {}; // TODO: need separate scissors and viewport to support scrolling
+        VkRect2D viewport = {};
         VkRect2D scissors = {};
     };
 
@@ -138,8 +134,8 @@ namespace engi::ui2
         auto set_enabled(bool e) -> void;
         auto is_enabled() const noexcept -> bool { return m_enabled; }
 
-        auto set_font(vk::FontId f) -> void;
-        auto get_font() const noexcept -> vk::FontId { return m_font; }
+        //auto set_font(vk::FontId f) -> void;
+        //auto get_font() const noexcept -> vk::FontId { return m_font; }
 
         auto is_dirty() const noexcept -> bool { return m_dirty; }
         auto mark_dirty() -> void;
@@ -151,7 +147,6 @@ namespace engi::ui2
         go::vf2 m_size = {100.0f, 30.0f};
         bool m_visible = true;
         bool m_enabled = true;
-        vk::FontId m_font = {};
         bool m_dirty = true;
         UIElement* m_parent = nullptr;
 
@@ -169,14 +164,6 @@ namespace engi::ui2
     class UIPanel : public UIDrawableElement
     {
     public:
-        struct Style
-        {
-            bool draw_background = false;
-            bool draw_border = false;
-            go::vu4 bg_color = color_darkgrey;
-            go::vu4 border_color = color_lightgrey;
-        };
-
         UIPanel() = default;
         UIPanel(bool scrollable) : m_scrollable(scrollable) {}
 
@@ -243,9 +230,8 @@ namespace engi::ui2
         float m_spacing = 4.0f;
         bool m_scrollable = false;
         go::vf2 m_scroll_offset = {0.0f, 0.0f};
-        Style m_style = {};
+        UIPanelStyle m_style = {};
         DrawContext m_draw_ctx = {};
-        //DrawContext m_scroll_ctx = {};
 
         friend class UISystem;
     };
@@ -262,11 +248,6 @@ namespace engi::ui2
     class UILabel : public UIElement
     {
     public:
-        struct Style
-        {
-            go::vu4 text_color = color_white;
-        };
-
         UILabel() = default;
 
         auto on_event(UIEvent& ev) -> bool override;
@@ -277,6 +258,9 @@ namespace engi::ui2
         auto set_text(std::wstring t) -> void;
         auto get_text() const -> const std::wstring& { return m_text; }
 
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
+
         auto set_color(go::vu4 c) -> void;
         auto get_color() const noexcept -> go::vu4 { return m_style.text_color; }
 
@@ -285,7 +269,7 @@ namespace engi::ui2
 
     private:
         std::wstring m_text;
-        Style m_style = {};
+        UILabelStyle m_style = {};
         UILabelAlign m_align = UILabelAlign::Left;
     };
 
@@ -294,24 +278,7 @@ namespace engi::ui2
     class UIButton : public UIElement
     {
     public:
-        struct Style
-        {
-            bool draw_background = true;
-            bool draw_border = true;
-            go::vu4 bg_color = color_darkgrey;
-            go::vu4 border_color = color_lightgrey;
-            go::vu4 text_color = color_white;
-
-            go::vu4 hover_bg_color = color_lightgrey;
-            go::vu4 hover_border_color = color_lightgrey;
-            go::vu4 hover_text_color = color_white;
-
-            go::vu4 pressed_bg_color = color_lightgrey;
-            go::vu4 pressed_border_color = color_white;
-            go::vu4 pressed_text_color = color_white;
-        };
-
-        UIButton();
+        UIButton() = default;
 
         auto on_event(UIEvent& ev) -> bool override;
         auto update(DrawContext& ctx) -> void override;
@@ -320,6 +287,9 @@ namespace engi::ui2
 
         auto set_label(std::wstring t) -> void;
         auto get_label() const -> const std::wstring& { return m_label; }
+
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
 
         auto set_text_color(go::vu4 c) -> void;
         auto get_text_color() const noexcept -> go::vu4 { return m_style.text_color; }
@@ -358,7 +328,7 @@ namespace engi::ui2
 
     private:
         std::wstring m_label;
-        Style m_style = {};
+        UIButtonStyle m_style = {};
         bool m_hovered = false;
         bool m_pressed = false;
     };
@@ -368,19 +338,6 @@ namespace engi::ui2
     class UITextInput : public UIElement
     {
     public:
-        struct Style
-        {
-            bool draw_background = true;
-            bool draw_border = true;
-            go::vu4 bg_color = color_darkgrey;
-            go::vu4 border_color = color_lightgrey;
-            go::vu4 text_color = color_white;
-            go::vu4 active_bg_color = color_darkgrey;
-            go::vu4 active_border_color = color_white;
-            go::vu4 active_text_color = color_white;
-            go::vu4 cursor_color = color_white;
-        };
-
         UITextInput();
 
         auto on_event(UIEvent& ev) -> bool override;
@@ -392,6 +349,9 @@ namespace engi::ui2
         auto set_text(std::wstring t) -> void;
         auto get_text() const -> const std::wstring& { return m_text; }
 
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
+
         auto set_text_color(go::vu4 c) -> void;
         auto get_text_color() const noexcept -> go::vu4 { return m_style.text_color; }
 
@@ -423,7 +383,7 @@ namespace engi::ui2
 
     private:
         std::wstring m_text;
-        Style m_style = {};
+        UITextInputStyle m_style = {};
         bool m_focused = false;
         uint32_t m_cursor = 0;
         float m_scroll_x = 0.0f;
@@ -434,19 +394,6 @@ namespace engi::ui2
     class UITextArea : public UIElement
     {
     public:
-        struct Style
-        {
-            bool draw_background = true;
-            bool draw_border = true;
-            go::vu4 bg_color = color_darkgrey;
-            go::vu4 border_color = color_lightgrey;
-            go::vu4 text_color = color_white;
-            go::vu4 active_bg_color = color_darkgrey;
-            go::vu4 active_border_color = color_white;
-            go::vu4 active_text_color = color_white;
-            go::vu4 cursor_color = color_white;
-        };
-
         UITextArea();
 
         auto on_event(UIEvent& ev) -> bool override;
@@ -458,6 +405,9 @@ namespace engi::ui2
         auto set_text(std::wstring t) -> void;
         auto get_text() const -> const std::wstring& { return m_text; }
 
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
+
         auto set_text_color(go::vu4 c) -> void;
         auto get_text_color() const noexcept -> go::vu4 { return m_style.text_color; }
 
@@ -489,7 +439,7 @@ namespace engi::ui2
 
     private:
         std::wstring m_text;
-        Style m_style = {};
+        UITextAreaStyle m_style = {};
         bool m_focused = false;
         uint32_t m_cursor = 0;
         float m_scroll_x = 0.0f;
@@ -501,14 +451,6 @@ namespace engi::ui2
     class UISlider : public UIElement
     {
     public:
-        struct Style
-        {
-            go::vu4 track_color = color_lightgrey;
-            go::vu4 handle_bg_color = color_darkgrey;
-            go::vu4 handle_border_color = color_white;
-            bool draw_handle_border = true;
-        };
-
         UISlider() = default;
 
         auto on_event(UIEvent& ev) -> bool override;
@@ -543,7 +485,7 @@ namespace engi::ui2
         float m_value = 0.0f;
         float m_min_val = 0.0f;
         float m_max_val = 1.0f;
-        Style m_style = {};
+        UISliderStyle m_style = {};
         bool m_dragging = false;
     };
 
@@ -552,14 +494,6 @@ namespace engi::ui2
     class UICheckbox : public UIElement
     {
     public:
-        struct Style
-        {
-            go::vu4 box_color = color_darkgrey;
-            go::vu4 border_color = color_lightgrey;
-            go::vu4 check_color = color_lightgrey;
-            go::vu4 text_color = color_white;
-        };
-
         UICheckbox();
 
         auto on_event(UIEvent& ev) -> bool override;
@@ -572,6 +506,9 @@ namespace engi::ui2
 
         auto set_label(std::wstring t) -> void;
         auto get_label() const -> const std::wstring& { return m_label; }
+
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
 
         auto set_box_color(go::vu4 c) -> void;
         auto get_box_color() const noexcept -> go::vu4 { return m_style.box_color; }
@@ -590,7 +527,7 @@ namespace engi::ui2
     private:
         bool m_checked = false;
         std::wstring m_label;
-        Style m_style = {};
+        UICheckboxStyle m_style = {};
     };
 
     // ===== UIDropdown =====
@@ -598,16 +535,6 @@ namespace engi::ui2
     class UIDropdown : public UIElement
     {
     public:
-        struct Style
-        {
-            bool draw_background = true;
-            bool draw_border = true;
-            go::vu4 bg_color = color_darkgrey;
-            go::vu4 border_color = color_lightgrey;
-            go::vu4 hover_color = color_lightgrey;
-            go::vu4 text_color = color_white;
-        };
-
         UIDropdown();
 
         auto on_event(UIEvent& ev) -> bool override;
@@ -625,6 +552,9 @@ namespace engi::ui2
 
         auto set_hover_color(go::vu4 c) -> void;
         auto get_hover_color() const noexcept -> go::vu4 { return m_style.hover_color; }
+
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
 
         auto set_text_color(go::vu4 c) -> void;
         auto get_text_color() const noexcept -> go::vu4 { return m_style.text_color; }
@@ -646,23 +576,9 @@ namespace engi::ui2
     private:
         std::vector<std::wstring> m_items;
         int m_selected = -1;
-        Style m_style = {};
+        UIDropdownStyle m_style = {};
         bool m_open = false;
         int m_hovered_item = -1;
-    };
-
-    class UIStyleSheet
-    {
-    public:
-        std::vector<UILabel::Style> label;
-        std::vector<UIButton::Style> button;
-        std::vector<UITextInput::Style> text_input;
-        std::vector<UITextArea::Style> text_area;
-        std::vector<UISlider::Style> slider;
-        std::vector<UICheckbox::Style> checkbox;
-        std::vector<UIDropdown::Style> dropdown;
-        //std::vector<UIExpandablePanel::Style> expandable_panel;
-        std::vector<UIPanel::Style> panel;
     };
 
     class UISystem

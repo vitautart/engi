@@ -71,12 +71,12 @@ namespace engi::ui2
 
     // ===== Font Helpers =====
 
-    static auto effective_text_buffer(UIElement& el, DrawContext& ctx, size_t passId) -> vk::TextBuffer*
+    static auto effective_text_buffer(vk::FontId font, DrawContext& ctx, size_t passId) -> vk::TextBuffer*
     {
         if (ctx.passes[passId].text.empty())
         {
             // add new text buffer for this font
-            auto new_text_buff = vk::TextBuffer::create(el.get_font());
+            auto new_text_buff = vk::TextBuffer::create(font);
             if (!new_text_buff)
                 return nullptr;
             ctx.passes[passId].text.emplace_back(std::move(new_text_buff.value()));
@@ -85,12 +85,12 @@ namespace engi::ui2
 
         for(auto& text_buff : ctx.passes[passId].text)
         {
-            if (text_buff.font_index() == el.get_font().font_index)
+            if (text_buff.font_index() == font.font_index)
                 return &text_buff;
             else
             {
                 // add new text buffer for this font
-                auto new_text_buff = vk::TextBuffer::create(el.get_font());
+                auto new_text_buff = vk::TextBuffer::create(font);
                 if (!new_text_buff)
                     return nullptr;
                 ctx.passes[passId].text.emplace_back(std::move(new_text_buff.value()));
@@ -100,10 +100,10 @@ namespace engi::ui2
         return nullptr;
     }
 
-    static auto effective_text_buffer(UIElement& el, DrawContext& ctx, size_t passId, VkRect2D rect) -> vk::TextBuffer*
+    static auto effective_text_buffer(vk::FontId font, DrawContext& ctx, size_t passId, VkRect2D rect) -> vk::TextBuffer*
     {
         // add new text buffer for this font
-        auto new_text_buff = vk::TextBuffer::create(el.get_font());
+        auto new_text_buff = vk::TextBuffer::create(font);
         if (!new_text_buff)
             return nullptr;
         ctx.passes[passId].texts.emplace_back(std::move(new_text_buff.value()), rect);
@@ -487,12 +487,6 @@ namespace engi::ui2
         }
     }
 
-    auto UIElement::set_font(vk::FontId f) -> void
-    {
-        m_font = f;
-        mark_dirty();
-    }
-
     // ===== UILabel Setters =====
 
     auto UILabel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
@@ -713,13 +707,13 @@ namespace engi::ui2
     {
         if (!m_visible) return;
 
-        auto text_buf = effective_text_buffer(*this, ctx, 0);
+        auto text_buf = effective_text_buffer(m_style.font, ctx, 0);
         if (!text_buf) return;
 
         //auto abs_pos = ctx.origin + m_position;
         auto abs_pos = m_position;
-        auto font_h = static_cast<float>(m_font.ptr->get_x_height());
-        auto text_w = static_cast<float>(m_font.ptr->calculate_line_width(m_text));
+        auto font_h = static_cast<float>(m_style.font.ptr->get_x_height());
+        auto text_w = static_cast<float>(m_style.font.ptr->calculate_line_width(m_text));
         auto text_x = abs_pos[0];
         if (m_align == UILabelAlign::Center)
             text_x = std::floor(abs_pos[0] + (m_size[0] - text_w) * 0.5f);
@@ -730,11 +724,6 @@ namespace engi::ui2
     }
 
     // ===== UIButton =====
-
-    UIButton::UIButton()
-    {
-        m_style = Style{};
-    }
 
     auto UIButton::on_event(UIEvent& ev) -> bool
     {
@@ -768,7 +757,7 @@ namespace engi::ui2
     auto UIButton::update(DrawContext& ctx) -> void
     {
         if (!m_visible) return;
-        auto text_buf = effective_text_buffer(*this, ctx, 0);
+        auto text_buf = effective_text_buffer(m_style.font, ctx, 0);
         if (!text_buf) return;
 
         //auto abs_pos = ctx.origin + m_position;
@@ -793,7 +782,7 @@ namespace engi::ui2
         draw_element_background(ctx, abs_pos, m_size, bg_color, m_style.draw_background, 0);
         draw_element_border(ctx, abs_pos, m_size, border_color, m_style.draw_border, 0);
 
-        auto text_pos = centered_single_line_text_pos(abs_pos, m_size, m_label, m_font.ptr);
+        auto text_pos = centered_single_line_text_pos(abs_pos, m_size, m_label, m_style.font.ptr);
         if (text_buf)
             text_buf->add(m_label, text_pos, text_color);
     }
@@ -905,7 +894,7 @@ namespace engi::ui2
         if (!m_visible) return;
         m_cursor = std::min(m_cursor, static_cast<uint32_t>(m_text.size()));
         //auto* font_atlas = effective_font_atlas(*this, ctx);
-        auto* font_atlas = m_font.ptr;
+        auto* font_atlas = m_style.font.ptr;
         //auto abs_pos = ctx.origin + m_position;
         auto abs_pos = m_position;
 
@@ -938,7 +927,7 @@ namespace engi::ui2
                 static_cast<uint32_t>(m_size[0]),
                 static_cast<uint32_t>(m_size[1])
             };
-            if (auto* text_buf = effective_text_buffer(*this, ctx, 0, scissors); text_buf)
+            if (auto* text_buf = effective_text_buffer(m_style.font, ctx, 0, scissors); text_buf)
                 text_buf->add(m_text, {text_x, text_y}, text_color);
         }
 
@@ -1077,7 +1066,7 @@ namespace engi::ui2
         m_scroll_x = std::max(0.0f, m_scroll_x);
         m_scroll_y = std::max(0.0f, m_scroll_y);
         //auto* font_atlas = effective_font_atlas(*this, ctx);
-        auto* font_atlas = m_font.ptr;
+        auto* font_atlas = m_style.font.ptr;
         //auto abs_pos = ctx.origin + m_position;
         auto abs_pos = m_position;
 
@@ -1113,7 +1102,7 @@ namespace engi::ui2
                 static_cast<uint32_t>(m_size[0]),
                 static_cast<uint32_t>(m_size[1])
             };
-            if (auto* text_buf = effective_text_buffer(*this, ctx, 0, scissors); text_buf)
+            if (auto* text_buf = effective_text_buffer(m_style.font, ctx, 0, scissors); text_buf)
                 text_buf->add(m_text, {text_x, text_y}, text_color);
         }
 
@@ -1221,7 +1210,7 @@ namespace engi::ui2
     auto UICheckbox::update(DrawContext& ctx) -> void
     {
         if (!m_visible) return;
-        auto* text_buf = effective_text_buffer(*this, ctx, 0);
+        auto* text_buf = effective_text_buffer(m_style.font, ctx, 0);
         //auto abs_pos = ctx.origin + m_position;
         auto abs_pos = m_position;
         auto box_sz = go::vf2{m_size[1], m_size[1]};
@@ -1244,7 +1233,7 @@ namespace engi::ui2
 
         if (!m_label.empty())
         {
-            auto font_h = static_cast<float>(m_font.ptr->get_x_height());
+            auto font_h = static_cast<float>(m_style.font.ptr->get_x_height());
             auto text_x = abs_pos[0] + box_sz[0] + 6.0f;
             auto text_y = std::floor(abs_pos[1] + (box_sz[1] + font_h) * 0.5f);
             if (text_buf)
@@ -1332,13 +1321,13 @@ namespace engi::ui2
         if (!m_visible) return;
 
         //auto* font_atlas = effective_font_atlas(*this, ctx);
-        auto* font_atlas = m_font.ptr;
+        auto* font_atlas = m_style.font.ptr;
         //auto abs_pos = ctx.origin + m_position;
         auto abs_pos = m_position;
 
         if (m_open)
         {
-            auto* text_buf = effective_text_buffer(*this, ctx, 1);
+            auto* text_buf = effective_text_buffer(m_style.font, ctx, 1);
             auto* solid_buf = effective_solid_buffer(ctx, 1);
 
             if (solid_buf && should_draw_background(m_style.draw_background, get_bg_color()))
@@ -1385,7 +1374,7 @@ namespace engi::ui2
         else 
         {
             auto* solid_buf = effective_solid_buffer(ctx, 0);
-            auto* text_buf = effective_text_buffer(*this, ctx, 0);
+            auto* text_buf = effective_text_buffer(m_style.font, ctx, 0);
 
             if (solid_buf && should_draw_background(m_style.draw_background, get_bg_color()))
                 solid_buf->add_rect(abs_pos, m_size, get_bg_color());

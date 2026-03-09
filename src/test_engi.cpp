@@ -277,12 +277,13 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
 
     ui::UIStyleSheet style_sheet;
     style_sheet.label = {
-        ui::UILabel::Style{
-            .text_color = {255, 255, 255, 255}
+        {
+            .text_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };
     style_sheet.button = {
-        ui::UIButton::Style{
+        {
             .draw_background = true,
             .draw_border = true,
             .bg_color = {170, 40, 40, 255},
@@ -293,11 +294,12 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
             .hover_text_color = {255, 255, 255, 255},
             .pressed_bg_color = {140, 20, 20, 255},
             .pressed_border_color = {255, 255, 255, 255},
-            .pressed_text_color = {255, 255, 255, 255}
+            .pressed_text_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };
     style_sheet.text_input = {
-        ui::UITextInput::Style{
+        {
             .draw_background = true,
             .draw_border = true,
             .bg_color = {110, 20, 20, 255},
@@ -306,11 +308,12 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
             .active_bg_color = {140, 30, 30, 255},
             .active_border_color = {255, 255, 255, 255},
             .active_text_color = {255, 255, 255, 255},
-            .cursor_color = {255, 255, 255, 255}
+            .cursor_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };
     style_sheet.text_area = {
-        ui::UITextArea::Style{
+        {
             .draw_background = true,
             .draw_border = true,
             .bg_color = {110, 20, 20, 255},
@@ -319,11 +322,12 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
             .active_bg_color = {140, 30, 30, 255},
             .active_border_color = {255, 255, 255, 255},
             .active_text_color = {255, 255, 255, 255},
-            .cursor_color = {255, 255, 255, 255}
+            .cursor_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };
     style_sheet.slider = {
-        ui::UISlider::Style{
+        {
             .track_color = {255, 255, 255, 255},
             .handle_bg_color = {170, 40, 40, 255},
             .handle_border_color = {255, 0, 0, 255},
@@ -331,35 +335,38 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
         }
     };
     style_sheet.checkbox = {
-        ui::UICheckbox::Style{
+        {
             .box_color = {150, 30, 30, 255},
             .border_color = {255, 0, 0, 255},
             .check_color = {255, 255, 255, 255},
-            .text_color = {255, 255, 255, 255}
+            .text_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };
     style_sheet.dropdown = {
-        ui::UIDropdown::Style{
+        {
             .draw_background = true,
             .draw_border = true,
             .bg_color = {150, 30, 30, 255},
             .border_color = {255, 0, 0, 255},
             .hover_color = {210, 70, 70, 255},
-            .text_color = {255, 255, 255, 255}
+            .text_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };
     /*style_sheet.expandable_panel = {
-        ui::UIExpandablePanel::Style{
+        {
             .draw_background = true,
             .draw_border = true,
             .bg_color = {90, 15, 15, 255},
             .border_color = {255, 0, 0, 255},
             .header_bg_color = {170, 40, 40, 255},
-            .text_color = {255, 255, 255, 255}
+            .text_color = {255, 255, 255, 255},
+            .font = font_id
         }
     };*/
     style_sheet.panel = {
-        ui::UIPanel::Style{
+        {
             .draw_background = true,
             .draw_border = true,
             .bg_color = {90, 15, 15, 220},
@@ -378,7 +385,6 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     auto* title = root.add_new<ui::UILabel>();
     title->set_text(L"UI controls test");
     title->set_size({220.0f, 20.0f});
-    title->set_font(font_id);
     title->applyStyleSheet(style_sheet, 0);
 
     auto panel = root.add_new<ui::UIPanel>(true);
@@ -393,27 +399,23 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     auto btn1 = panel->add_new<ui::UIButton>();
     btn1->set_label(L"Button 1");
     btn1->set_size({200.0f, 24.0f});
-    btn1->set_font(font_id);
     btn1->applyStyleSheet(style_sheet, 0);
     btn1->on_click = [](){ std::println("[UI] Button 1 clicked"); };
 
     auto btn3 = panel->add_new<ui::UIButton>();
     btn3->set_label(L"Button 3");
     btn3->set_size({200.0f, 24.0f});
-    btn3->set_font(font_id);
     btn3->applyStyleSheet(style_sheet, 0);
     btn3->on_click = [](){ std::println("[UI] Button 3 clicked"); };
 
     auto btn4 = panel->add_new<ui::UIButton>();
     btn4->set_label(L"Button 4");
     btn4->set_size({200.0f, 24.0f});
-    btn4->set_font(font_id);
     btn4->applyStyleSheet(style_sheet, 0);
     btn4->on_click = [](){ std::println("[UI] Button 4 clicked"); };
 
     auto input = panel->add_new<ui::UITextInput>();
     input->set_size({200.0f, 24.0f});
-    input->set_font(font_id);
     input->set_text(L"Type here");
     input->applyStyleSheet(style_sheet, 0);
     input->on_change = [](const std::wstring& text)
@@ -421,7 +423,6 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
 
     auto drop = panel->add_new<ui::UIDropdown>();
     drop->set_size({200.0f, 24.0f});
-    drop->set_font(font_id);
     drop->set_items({L"Option 1", L"Option 2", L"Option 3"});
     drop->set_selected(0);
     drop->applyStyleSheet(style_sheet, 0);
@@ -431,13 +432,11 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     auto btn2 = panel->add_new<ui::UIButton>();
     btn2->set_label(L"Button 2");
     btn2->set_size({200.0f, 24.0f});
-    btn2->set_font(font_id);
     btn2->applyStyleSheet(style_sheet, 0);
     btn2->on_click = [](){ std::println("[UI] Button 2 clicked"); };
 
     auto check = panel->add_new<ui::UICheckbox>();
     check->set_size({200.0f, 24.0f});
-    check->set_font(font_id);
     check->set_label(L"Check me");
     check->set_checked(true);
     check->applyStyleSheet(style_sheet, 0);
