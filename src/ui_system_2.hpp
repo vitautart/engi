@@ -159,7 +159,12 @@ namespace engi::ui2
     public:
         virtual auto draw(VkCommandBuffer cmd, vk::RenderingOverlay& overlay) -> void = 0;
         virtual auto upload(VkCommandBuffer cmd) -> void = 0;
+        auto get_draw_context() -> DrawContext& { return m_draw_ctx; }
+    protected:
+        DrawContext m_draw_ctx = {};
     };
+    auto cast_drawable(const UIElement* el) -> const UIDrawableElement*;
+    auto cast_drawable(UIElement* el) -> UIDrawableElement*;
 
     class UIPanel : public UIDrawableElement
     {
@@ -215,8 +220,6 @@ namespace engi::ui2
         auto set_border_color(go::vu4 c) -> void;
         auto get_border_color() const noexcept -> go::vu4 { return m_style.border_color; }
 
-        auto get_draw_context() -> DrawContext& { return m_draw_ctx; }
-
     private:
         auto apply_layout() -> void;
         auto content_height() const -> float;
@@ -231,7 +234,6 @@ namespace engi::ui2
         bool m_scrollable = false;
         go::vf2 m_scroll_offset = {0.0f, 0.0f};
         UIPanelStyle m_style = {};
-        DrawContext m_draw_ctx = {};
 
         friend class UISystem;
     };

@@ -18,6 +18,28 @@ namespace engi::ui2
         return s_next_id++;
     }
 
+    auto cast_drawable(const UIElement* el) -> const UIDrawableElement*
+    {
+        switch (el->element_type())
+        {
+            case ElementType::Panel:
+                return static_cast<UIDrawableElement*>(const_cast<UIElement*>(el));
+            default:
+                return nullptr;
+        }
+    }
+
+    auto cast_drawable(UIElement* el) -> UIDrawableElement*
+    {
+        switch (el->element_type())
+        {
+            case ElementType::Panel:
+                return static_cast<UIDrawableElement*>(el);
+            default:
+                return nullptr;
+        }
+    }
+
     // ===== Geometry Helpers =====
 
     static auto point_in_rect(const go::vf2& point, const go::vf2& rect_pos, const go::vf2& rect_size) -> bool
@@ -1904,6 +1926,7 @@ namespace engi::ui2
             if (!child) continue;
             if (child->get_id() != keep_id)
                 child->clear_interaction_state();
+            // TODO: replace with is_drawable_element
             if (child->element_type() == ElementType::Panel)
                 static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
             //if (child->element_type() == ElementType::ExpandablePanel)
@@ -1947,11 +1970,9 @@ namespace engi::ui2
         {
             if (!child->is_visible())
                 continue;
-            if (child->element_type() == ElementType::Panel)
+            if (auto panel = cast_drawable(child.get()); panel != nullptr)
             {
-                auto panel = static_cast<UIPanel*>(child.get());
                 auto& panel_ctx = panel->get_draw_context();
-                // TODO: need to clip this against parent ctx
                 panel_ctx.viewport = to_rect(panel->m_position + m_position + m_scroll_offset, panel->m_size);
                 panel_ctx.scissors = ctx.viewport;
                 panel->update(panel_ctx);
@@ -1971,11 +1992,10 @@ namespace engi::ui2
 
         for (auto& child : m_children)
         {
-            if (child->is_visible() && child->element_type() == ElementType::Panel)
-            {
-                auto panel = static_cast<UIPanel*>(child.get());
+            if (!child->is_visible())
+                continue;
+            if (auto panel = cast_drawable(child.get()); panel != nullptr)
                 panel->upload(cmd);
-            }
         }
     }
 
@@ -2022,8 +2042,10 @@ namespace engi::ui2
         draw_pass(m_draw_ctx.passes[0], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
         for (auto& child : m_children)
         {
-            if (child->is_visible() && child->element_type() == ElementType::Panel)
-                static_cast<UIPanel*>(child.get())->draw(cmd, overlay);
+            if (!child->is_visible())
+                continue;
+            if (auto panel = cast_drawable(child.get()); panel != nullptr)
+                panel->draw(cmd, overlay);
         }
 
         draw_pass(m_draw_ctx.passes[1], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
