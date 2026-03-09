@@ -1754,7 +1754,6 @@ namespace engi::ui2
             if (m_children.empty())
             {
                 auto scroll_panel = std::make_unique<UIPanel>(false);
-                //scroll_panel->set_size(m_size - go::vf2{get_padding(), get_padding()});
                 scroll_panel->set_size(m_size);
                 scroll_panel->set_position({0, 0});
                 scroll_panel->set_draw_background(false);
@@ -1995,12 +1994,6 @@ namespace engi::ui2
     {
         if (!m_visible) return;
 
-        /*VkRect2D viewport =
-        {
-            .offset = {static_cast<int32_t>(m_position[0]), static_cast<int32_t>(m_position[1])},
-            .extent = {static_cast<uint32_t>(m_size[0]), static_cast<uint32_t>(m_size[1])}
-        };*/
-
         auto draw_pass = [](const DrawContext::Pass& pass, VkCommandBuffer cmd, 
             vk::RenderingOverlay& overlay, const VkRect2D& viewport, const VkRect2D& scissors_main)
         {
@@ -2015,7 +2008,6 @@ namespace engi::ui2
                 overlay.draw(cmd, buff, viewport);
             }
 
-            //vkCmdSetScissor(cmd, 0, 1, &viewport);
             vkCmdSetScissor(cmd, 0, 1, &scissors_main);
             overlay.start_text_draw(cmd);
             for (auto& buff : pass.text)
