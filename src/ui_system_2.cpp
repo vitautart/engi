@@ -702,9 +702,11 @@ namespace engi::ui2
 
     auto UIExpandablePanel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
     {
-        if (index >= style_sheet.expandable_panel.size())
-            return;
-        m_style = style_sheet.expandable_panel[index];
+        UIPanel::applyStyleSheet(style_sheet, index);
+
+        if (index < style_sheet.expandable_panel.size())
+            m_style = style_sheet.expandable_panel[index];
+
         mark_dirty();
     }
 

@@ -505,10 +505,6 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     expandable->set_header_height(24.0f);
     expandable->set_padding(8.0f);
     expandable->set_spacing(8.0f);
-    expandable->set_draw_background(true);
-    expandable->set_draw_border(true);
-    expandable->set_bg_color({90, 15, 15, 220});
-    expandable->set_border_color({255, 0, 0, 255});
     expandable->applyStyleSheet(style_sheet, 0);
 
     auto exp_btn1 = expandable->add_new<ui::UIButton>();
