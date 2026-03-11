@@ -272,6 +272,7 @@ namespace engi::ui2
 
         auto on_event(UIEvent& ev) -> bool override;
         auto update(DrawContext& ctx) -> void override;
+        auto draw(VkCommandBuffer cmd, vk::RenderingOverlay& overlay) -> void override;
         auto applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void override;
         auto element_type() const -> ElementType override { return ElementType::ExpandablePanel; }
 

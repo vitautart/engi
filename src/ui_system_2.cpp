@@ -1642,9 +1642,13 @@ namespace engi::ui2
 
         if (m_expanded)
         {
+            auto panel_abs_pos = go::vf2{
+                static_cast<float>(ctx.viewport.offset.x),
+                static_cast<float>(ctx.viewport.offset.y)
+            };
             auto content_pos = go::vf2{0.0f, m_header_height};
             auto content_size = go::vf2{m_size[0], std::max(0.0f, m_size[1] - m_header_height)};
-            auto content_scissors = rect_intersection(ctx.viewport, to_rect(m_position + content_pos, content_size));
+            auto content_scissors = rect_intersection(ctx.scissors, to_rect(panel_abs_pos + content_pos, content_size));
 
             draw_element_background(ctx, content_pos, content_size, get_bg_color(), get_draw_background(), 0);
 
@@ -1656,7 +1660,7 @@ namespace engi::ui2
                 if (auto panel = cast_drawable(child.get()); panel != nullptr)
                 {
                     auto& panel_ctx = panel->get_draw_context();
-                    panel_ctx.viewport = to_rect(panel->get_position() + m_position + m_scroll_offset + content_pos, panel->get_size());
+                    panel_ctx.viewport = to_rect(panel_abs_pos + panel->get_position() + m_scroll_offset + content_pos, panel->get_size());
                     panel_ctx.scissors = content_scissors;
                     panel->update(panel_ctx);
                 }
@@ -1937,6 +1941,11 @@ namespace engi::ui2
 
         clear_draw_context(ctx);
 
+        auto panel_abs_pos = go::vf2{
+            static_cast<float>(ctx.viewport.offset.x),
+            static_cast<float>(ctx.viewport.offset.y)
+        };
+
         draw_element_background(ctx, go::vf2{0, 0}, m_size, get_bg_color(), m_style.draw_background, 0);
 
         auto* child_ctx = &ctx;
@@ -1948,8 +1957,8 @@ namespace engi::ui2
             if (auto panel = cast_drawable(child.get()); panel != nullptr)
             {
                 auto& panel_ctx = panel->get_draw_context();
-                panel_ctx.viewport = to_rect(panel->m_position + m_position, panel->m_size);
-                panel_ctx.scissors = ctx.viewport;
+                panel_ctx.viewport = to_rect(panel_abs_pos + panel->m_position, panel->m_size);
+                panel_ctx.scissors = ctx.scissors;
                 panel->update(panel_ctx);
             }
             else
@@ -1969,9 +1978,14 @@ namespace engi::ui2
         clear_draw_context(ctx);
         draw_element_background(ctx, go::vf2{0, 0}, m_size, get_bg_color(), m_style.draw_background, 0);
 
+        auto panel_abs_pos = go::vf2{
+            static_cast<float>(ctx.viewport.offset.x),
+            static_cast<float>(ctx.viewport.offset.y)
+        };
+
         auto content_offset = content_viewport_offset();
         auto content_size = content_viewport_size();
-        auto content_scissors = rect_intersection(ctx.viewport, to_rect(m_position + content_offset, content_size));
+        auto content_scissors = rect_intersection(ctx.scissors, to_rect(panel_abs_pos + content_offset, content_size));
 
         for (auto& child : m_children)
         {
@@ -1980,7 +1994,7 @@ namespace engi::ui2
             if (auto panel = cast_drawable(child.get()); panel != nullptr)
             {
                 auto& panel_ctx = panel->get_draw_context();
-                panel_ctx.viewport = to_rect(panel->get_position() + m_position + m_scroll_offset + content_offset, panel->get_size());
+                panel_ctx.viewport = to_rect(panel_abs_pos + panel->get_position() + m_scroll_offset + content_offset, panel->get_size());
                 panel_ctx.scissors = content_scissors;
                 panel->update(panel_ctx);
             }
@@ -2106,6 +2120,66 @@ namespace engi::ui2
                 continue;
             if (auto panel = cast_drawable(child.get()); panel != nullptr)
                 panel->draw(cmd, overlay);
+        }
+
+        draw_pass(m_draw_ctx.passes[1], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
+        draw_pass(m_draw_ctx.passes[2], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
+    }
+
+    auto UIExpandablePanel::draw(VkCommandBuffer cmd, vk::RenderingOverlay& overlay) -> void
+    {
+        if (!m_visible)
+            return;
+
+        auto draw_pass = [](const DrawContext::Pass& pass, VkCommandBuffer cmd,
+            vk::RenderingOverlay& overlay, const VkRect2D& viewport, const VkRect2D& scissors_main)
+        {
+            vk::viewport_set(cmd, viewport);
+            vk::scissors_set(cmd, scissors_main);
+            overlay.start_draw_2d(cmd);
+            if (pass.solid)
+                overlay.draw(cmd, pass.solid.value(), viewport);
+            for (const auto& [buff, scissors] : pass.solids)
+            {
+                auto intersected_scissor = rect_intersection(scissors_main, scissors);
+                vk::scissors_set(cmd, intersected_scissor);
+                overlay.draw(cmd, buff, viewport);
+            }
+
+            vk::scissors_set(cmd, scissors_main);
+            overlay.start_text_draw(cmd);
+            for (auto& buff : pass.text)
+                overlay.draw(cmd, buff, viewport);
+            for (const auto& [buff, scissors] : pass.texts)
+            {
+                auto intersected_scissor = rect_intersection(scissors_main, scissors);
+                vk::scissors_set(cmd, intersected_scissor);
+                overlay.draw(cmd, buff, viewport);
+            }
+
+            vk::scissors_set(cmd, scissors_main);
+            overlay.start_draw_2d_wire(cmd);
+            if (pass.wire)
+                overlay.draw(cmd, pass.wire.value(), viewport);
+            for (const auto& [buff, scissors] : pass.wires)
+            {
+                auto intersected_scissor = rect_intersection(scissors_main, scissors);
+                vk::scissors_set(cmd, intersected_scissor);
+                overlay.draw(cmd, buff, viewport);
+            }
+        };
+
+        draw_pass(m_draw_ctx.passes[0], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);
+
+        if (m_expanded)
+        {
+            for (auto& child : m_children)
+            {
+                if (!child->is_visible())
+                    continue;
+                if (auto panel = cast_drawable(child.get()); panel != nullptr)
+                    panel->draw(cmd, overlay);
+            }
         }
 
         draw_pass(m_draw_ctx.passes[1], cmd, overlay, m_draw_ctx.viewport, m_draw_ctx.scissors);

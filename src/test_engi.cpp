@@ -499,7 +499,7 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     auto_hbtn2->on_click = [](){ std::println("[UI] Auto H2 clicked"); };
 
     auto expandable = root.add_new<ui::UIExpandablePanel>();
-    expandable->set_size({220.0f, 124.0f});
+    expandable->set_size({220.0f, 220.0f});
     expandable->set_header(L"Expandable");
     expandable->set_expanded(true);
     expandable->set_header_height(24.0f);
@@ -532,179 +532,41 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
         std::println("[UI] Expandable input changed");
     };
 
-
-    /*auto* align_left = root.add_new<ui::UILabel>();
-    align_left->set_text(L"Left aligned label");
-    align_left->set_size({220.0f, 18.0f});
-    align_left->set_align(ui::UILabelAlign::Left);
-
-    auto* align_center = root.add_new<ui::UILabel>();
-    align_center->set_text(L"Centered label");
-    align_center->set_size({220.0f, 18.0f});
-    align_center->set_align(ui::UILabelAlign::Center);
-
-    auto* align_right = root.add_new<ui::UILabel>();
-    align_right->set_text(L"Right aligned label");
-    align_right->set_size({220.0f, 18.0f});
-    align_right->set_align(ui::UILabelAlign::Right);
-
-    auto* main_panel = root.add_new<ui::UIPanel>();
-    main_panel->set_size({220.0f, 116.0f});
-    main_panel->set_layout(ui::Layout::Horizontal);
-    main_panel->set_padding(4.0f);
-    main_panel->set_spacing(8.0f);
-    main_panel->set_draw_background(true);
-    main_panel->set_draw_border(true);
-
-    auto* left_panel = main_panel->add_new<ui::UIPanel>();
-    left_panel->set_size({100.0f, 100.0f});
-    left_panel->set_layout(ui::Layout::Vertical);
-    left_panel->set_padding(4.0f);
-    left_panel->set_spacing(4.0f);
-    left_panel->set_draw_background(true);
-    left_panel->set_draw_border(true);
-    left_panel->set_scrollable(true);
-
-    auto* left_label = left_panel->add_new<ui::UILabel>();
-    left_label->set_text(L"Left");
-    left_label->set_size({80.0f, 16.0f});
-    left_label->set_align(ui::UILabelAlign::Center);
-
-    auto* btn_hello = left_panel->add_new<ui::UIButton>();
-    btn_hello->set_label(L"Hello");
-    btn_hello->set_size({92.0f, 20.0f});
-    btn_hello->on_click = [](){ std::println("[UI] Hello click"); };
-
-    m_counter_label = root.add_new<ui::UILabel>();
-    m_counter_label->set_text(L"Clicks: 0");
-    m_counter_label->set_size({220.0f, 18.0f});
-
-    auto* btn_count = left_panel->add_new<ui::UIButton>();
-    btn_count->set_label(L"Count");
-    btn_count->set_size({92.0f, 20.0f});
-    btn_count->on_click = [this]()
+    auto exp_drop = expandable->add_new<ui::UIDropdown>();
+    exp_drop->set_size({200.0f, 24.0f});
+    exp_drop->set_items({L"Ex Option 1", L"Ex Option 2", L"Ex Option 3"});
+    exp_drop->set_selected(0);
+    exp_drop->applyStyleSheet(style_sheet, 0);
+    exp_drop->on_change = [](int idx)
     {
-        m_click_count++;
-        m_counter_label->set_text(L"Clicks: " + std::to_wstring(m_click_count));
+        std::println("[UI] Expandable dropdown selected index: {}", idx);
     };
 
-    auto* left_slider = left_panel->add_new<ui::UISlider>();
-    left_slider->set_size({92.0f, 16.0f});
-    left_slider->set_value(0.35f);
-    left_slider->on_change = [](float v){ std::println("[UI] Left slider: {:.2f}", v); };
+    auto exp_auto_panel = expandable->add_new<ui::UIAutoPanel>();
+    exp_auto_panel->applyStyleSheet(style_sheet, 0);
+    exp_auto_panel->set_layout(ui::Layout::Vertical);
+    exp_auto_panel->set_padding(6.0f);
+    exp_auto_panel->set_spacing(6.0f);
+    exp_auto_panel->set_draw_background(true);
+    exp_auto_panel->set_draw_border(true);
 
-    auto* left_more_btn = left_panel->add_new<ui::UIButton>();
-    left_more_btn->set_label(L"More");
-    left_more_btn->set_size({88.0f, 20.0f});
-    left_more_btn->on_click = [](){ std::println("[UI] Left more"); };
-
-    auto* right_panel = main_panel->add_new<ui::UIPanel>();
-    right_panel->set_size({100.0f, 100.0f});
-    right_panel->set_layout(ui::Layout::Vertical);
-    right_panel->set_padding(4.0f);
-    right_panel->set_spacing(4.0f);
-    right_panel->set_draw_background(true);
-    right_panel->set_draw_border(true);
-    right_panel->set_scrollable(true);
-
-    auto* right_label = right_panel->add_new<ui::UILabel>();
-    right_label->set_text(L"Right");
-    right_label->set_size({80.0f, 16.0f});
-    right_label->set_align(ui::UILabelAlign::Center);
-
-    auto* check = right_panel->add_new<ui::UICheckbox>();
-    check->set_label(L"On");
-    check->set_size({92.0f, 18.0f});
-    check->set_checked(true);
-    check->on_change = [](bool v){ std::println("[UI] Checkbox: {}", v); };
-
-    auto* input = right_panel->add_new<ui::UITextInput>();
-    input->set_size({92.0f, 24.0f});
-    input->set_text(L"Input");
-    input->on_change = [](const std::wstring& text)
+    auto exp_auto_input = exp_auto_panel->add_new<ui::UITextInput>();
+    exp_auto_input->set_size({200.0f, 24.0f});
+    exp_auto_input->set_text(L"Auto panel input");
+    exp_auto_input->applyStyleSheet(style_sheet, 0);
+    exp_auto_input->on_change = [](const std::wstring&)
     {
-        std::println("[UI] Input size: {}", text.size());
+        std::println("[UI] Expandable auto input changed");
     };
 
-    auto* dropdown = right_panel->add_new<ui::UIDropdown>();
-    dropdown->set_size({92.0f, 20.0f});
-    dropdown->set_items({L"One", L"Two", L"Three"});
-    dropdown->set_selected(0);
-    dropdown->on_change = [](int idx){ std::println("[UI] Dropdown: {}", idx); };
-
-    auto* dd_btn1 = right_panel->add_new<ui::UIButton>();
-    dd_btn1->set_label(L"DD Btn 1");
-    dd_btn1->set_size({92.0f, 20.0f});
-    dd_btn1->on_click = [](){ std::println("[UI] DD Btn 1"); };
-
-    auto* dd_btn2 = right_panel->add_new<ui::UIButton>();
-    dd_btn2->set_label(L"DD Btn 2");
-    dd_btn2->set_size({92.0f, 20.0f});
-    dd_btn2->on_click = [](){ std::println("[UI] DD Btn 2"); };
-
-    auto* dd_btn3 = right_panel->add_new<ui::UIButton>();
-    dd_btn3->set_label(L"DD Btn 3");
-    dd_btn3->set_size({92.0f, 20.0f});
-    dd_btn3->on_click = [](){ std::println("[UI] DD Btn 3"); };
-
-    auto* expandable = root.add_new<ui::UIExpandablePanel>();
-    expandable->set_size({220.0f, 126.0f});
-    expandable->set_header(L"Advanced controls");
-    expandable->set_expanded(true);
-    expandable->set_header_height(24.0f);
-    expandable->set_folded_height(24.0f);
-    expandable->set_expanded_height(126.0f);
-    expandable->set_padding(6.0f);
-    expandable->set_spacing(4.0f);
-    expandable->set_draw_background(true);
-    expandable->set_draw_border(true);
-
-    auto* ex_label = expandable->add_new<ui::UILabel>();
-    ex_label->set_text(L"Inside expandable");
-    ex_label->set_size({208.0f, 16.0f});
-
-    auto* ex_button = expandable->add_new<ui::UIButton>();
-    ex_button->set_label(L"Action");
-    ex_button->set_size({208.0f, 20.0f});
-    ex_button->on_click = [](){ std::println("[UI] Expandable action"); };
-
-    auto* ex_slider = expandable->add_new<ui::UISlider>();
-    ex_slider->set_size({208.0f, 16.0f});
-    ex_slider->set_value(0.5f);
-    ex_slider->on_change = [](float v){ std::println("[UI] Expandable slider: {:.2f}", v); };
-
-    auto* ex_dropdown = expandable->add_new<ui::UIDropdown>();
-    ex_dropdown->set_size({208.0f, 20.0f});
-    ex_dropdown->set_items({L"Alpha", L"Beta", L"Gamma"});
-    ex_dropdown->set_selected(0);
-    ex_dropdown->on_change = [](int idx){ std::println("[UI] Expandable dropdown: {}", idx); };
-
-    auto* ex_nested_panel = expandable->add_new<ui::UIPanel>();
-    ex_nested_panel->set_size({208.0f, 48.0f});
-    ex_nested_panel->set_layout(ui::Layout::Horizontal);
-    ex_nested_panel->set_padding(4.0f);
-    ex_nested_panel->set_spacing(4.0f);
-    ex_nested_panel->set_draw_background(true);
-    ex_nested_panel->set_draw_border(true);
-
-    auto* ex_nested_btn = ex_nested_panel->add_new<ui::UIButton>();
-    ex_nested_btn->set_label(L"Nested");
-    ex_nested_btn->set_size({96.0f, 20.0f});
-    ex_nested_btn->on_click = [](){ std::println("[UI] Expandable nested button"); };
-
-    auto* ex_nested_check = ex_nested_panel->add_new<ui::UICheckbox>();
-    ex_nested_check->set_size({96.0f, 20.0f});
-    ex_nested_check->set_label(L"Flag");
-    ex_nested_check->set_checked(false);
-    ex_nested_check->on_change = [](bool v){ std::println("[UI] Expandable nested check: {}", v); };
-
-    auto* text_area = root.add_new<ui::UITextArea>();
-    text_area->set_size({220.0f, 90.0f});
-    text_area->set_text(L"TextArea\nType here");
-    text_area->on_change = [](const std::wstring& text)
+    auto exp_auto_btn = exp_auto_panel->add_new<ui::UIButton>();
+    exp_auto_btn->set_label(L"Auto Panel Button");
+    exp_auto_btn->set_size({200.0f, 24.0f});
+    exp_auto_btn->applyStyleSheet(style_sheet, 0);
+    exp_auto_btn->on_click = []()
     {
-        std::println("[UI] TextArea size: {}", text.size());
-    };*/
+        std::println("[UI] Expandable auto button clicked");
+    };
 
     std::println("[INFO] UI system initialized");
 }
