@@ -101,6 +101,13 @@ namespace engi::ui2
         vk::FontId font = {};
     };
 
+    struct UIExpandablePanelStyle
+    {
+        go::vu4 header_bg_color = color_darkgrey;
+        go::vu4 text_color = color_white;
+        vk::FontId font = {};
+    };
+
     struct UIStyleSheet
     {
         std::vector<UILabelStyle> label;
@@ -110,7 +117,7 @@ namespace engi::ui2
         std::vector<UISliderStyle> slider;
         std::vector<UICheckboxStyle> checkbox;
         std::vector<UIDropdownStyle> dropdown;
-        //std::vector<UIExpandablePanelStyle> expandable_panel;
+        std::vector<UIExpandablePanelStyle> expandable_panel;
         std::vector<UIPanelStyle> panel;
     };
 }

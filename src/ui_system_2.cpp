@@ -23,6 +23,7 @@ namespace engi::ui2
         switch (el->element_type())
         {
             case ElementType::Panel:
+            case ElementType::ExpandablePanel:
                 return static_cast<UIDrawableElement*>(const_cast<UIElement*>(el));
             default:
                 return nullptr;
@@ -34,6 +35,7 @@ namespace engi::ui2
         switch (el->element_type())
         {
             case ElementType::Panel:
+            case ElementType::ExpandablePanel:
                 return static_cast<UIDrawableElement*>(el);
             default:
                 return nullptr;
@@ -695,6 +697,59 @@ namespace engi::ui2
     auto UIPanel::set_bg_color(go::vu4 c) -> void { m_style.bg_color = c; mark_dirty(); }
     auto UIPanel::set_draw_border(bool v) -> void { if (m_style.draw_border != v) { m_style.draw_border = v; mark_dirty(); } }
     auto UIPanel::set_border_color(go::vu4 c) -> void { m_style.border_color = c; mark_dirty(); }
+
+    // ===== UIExpandablePanel Setters =====
+
+    auto UIExpandablePanel::applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void
+    {
+        if (index >= style_sheet.expandable_panel.size())
+            return;
+        m_style = style_sheet.expandable_panel[index];
+        mark_dirty();
+    }
+
+    auto UIExpandablePanel::set_header(std::wstring text) -> void
+    {
+        m_header = std::move(text);
+        mark_dirty();
+    }
+
+    auto UIExpandablePanel::set_expanded(bool expanded) -> void
+    {
+        if (m_expanded == expanded)
+            return;
+
+        if (!expanded)
+            m_expanded_height = std::max(m_header_height, m_size[1]);
+
+        m_expanded = expanded;
+        sync_height_with_state();
+        clamp_scroll();
+        mark_dirty();
+    }
+
+    auto UIExpandablePanel::set_header_height(float h) -> void
+    {
+        auto new_h = std::max(1.0f, h);
+        if (m_header_height == new_h)
+            return;
+        m_header_height = new_h;
+        sync_height_with_state();
+        clamp_scroll();
+        mark_dirty();
+    }
+
+    auto UIExpandablePanel::set_header_bg_color(go::vu4 c) -> void
+    {
+        m_style.header_bg_color = c;
+        mark_dirty();
+    }
+
+    auto UIExpandablePanel::set_text_color(go::vu4 c) -> void
+    {
+        m_style.text_color = c;
+        mark_dirty();
+    }
 
     // ===== UILabel =====
 
@@ -1403,6 +1458,234 @@ namespace engi::ui2
         }
     }
 
+    // ===== UIExpandablePanel =====
+
+    UIExpandablePanel::UIExpandablePanel()
+    {
+        set_layout(Layout::Vertical);
+        set_draw_background(true);
+        set_bg_color(color_darkgrey);
+        set_draw_border(true);
+        set_border_color(color_lightgrey);
+        m_expanded_height = std::max(m_header_height, m_size[1]);
+    }
+
+    auto UIExpandablePanel::sync_height_with_state() -> void
+    {
+        m_header_height = std::max(1.0f, m_header_height);
+        m_expanded_height = std::max(m_header_height, m_expanded_height);
+
+        if (m_expanded)
+        {
+            if (m_size[1] > m_header_height)
+                m_expanded_height = std::max(m_header_height, m_size[1]);
+            m_size[1] = m_expanded_height;
+        }
+        else
+        {
+            if (m_size[1] > m_header_height)
+                m_expanded_height = std::max(m_header_height, m_size[1]);
+            m_size[1] = m_header_height;
+        }
+    }
+
+    auto UIExpandablePanel::on_event(UIEvent& ev) -> bool
+    {
+        sync_content_panel();
+        sync_height_with_state();
+        clamp_scroll();
+
+        if (!m_visible || !m_enabled)
+            return false;
+
+        auto local = go::vf2{ev.mouse_pos[0] - m_position[0], ev.mouse_pos[1] - m_position[1]};
+        auto inside = point_in_rect(local, {0.0f, 0.0f}, m_size);
+        auto inside_header = point_in_rect(local, {0.0f, 0.0f}, {m_size[0], m_header_height});
+
+        if (ev.type == EventType::MousePress && ev.button == 0 && inside_header)
+        {
+            set_expanded(!m_expanded);
+            ev.active_interaction_id = m_id;
+            ev.consumed = true;
+            return true;
+        }
+
+        if (!m_expanded)
+        {
+            if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
+            {
+                ev.consumed = true;
+                return true;
+            }
+            return false;
+        }
+
+        auto content_h = std::max(0.0f, m_size[1] - m_header_height);
+        auto content_inside = point_in_rect(local, {0.0f, m_header_height}, {m_size[0], content_h});
+
+        if (ev.type == EventType::Scroll && content_inside)
+        {
+            m_scroll_offset[1] += ev.scroll_dy * 20.0f;
+            clamp_scroll();
+            mark_dirty();
+            ev.consumed = true;
+            return true;
+        }
+
+        auto child_ev = ev;
+        child_ev.mouse_pos = {
+            local[0] - m_scroll_offset[0],
+            local[1] - m_header_height - m_scroll_offset[1]
+        };
+
+        auto is_pointer_event =
+            ev.type == EventType::MouseMove ||
+            ev.type == EventType::MousePress ||
+            ev.type == EventType::MouseRelease ||
+            ev.type == EventType::Scroll;
+
+        if (is_pointer_event)
+        {
+            for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+            {
+                if (!(*it)->is_visible())
+                    continue;
+                if ((*it)->element_type() != ElementType::Dropdown)
+                    continue;
+                auto* dropdown = static_cast<UIDropdown*>(it->get());
+                if (!dropdown->is_open())
+                    continue;
+                if ((*it)->on_event(child_ev))
+                {
+                    ev.consumed = child_ev.consumed;
+                    ev.active_interaction_id = child_ev.active_interaction_id;
+                    return true;
+                }
+            }
+        }
+
+        for (auto it = m_children.rbegin(); it != m_children.rend(); ++it)
+        {
+            if ((*it)->on_event(child_ev))
+            {
+                ev.consumed = child_ev.consumed;
+                ev.active_interaction_id = child_ev.active_interaction_id;
+                return true;
+            }
+        }
+
+        if (inside && (ev.type == EventType::MousePress || ev.type == EventType::MouseRelease))
+        {
+            ev.consumed = true;
+            return true;
+        }
+        return false;
+    }
+
+    auto UIExpandablePanel::update(DrawContext& ctx) -> void
+    {
+        sync_content_panel();
+        sync_height_with_state();
+        clamp_scroll();
+
+        if (!m_visible)
+            return;
+
+        clear_draw_context(ctx);
+
+        auto* header_solid = effective_solid_buffer(ctx, 0);
+        auto* header_text = effective_text_buffer(m_style.font, ctx, 0);
+
+        if (header_solid && m_style.header_bg_color[3] > 0)
+            header_solid->add_rect({0.0f, 0.0f}, {m_size[0], m_header_height}, m_style.header_bg_color);
+
+        if (header_solid)
+        {
+            auto arrow_center = go::vf2{8.0f, m_header_height * 0.5f};
+            auto side = std::max(6.0f, std::min(10.0f, m_header_height * 0.45f));
+            auto half_w = side * 0.5f;
+            auto half_h = side * 0.5f * std::sqrt(3.0f) * 0.5f;
+
+            if (m_expanded)
+            {
+                auto p0 = go::vf2{arrow_center[0] - half_w, arrow_center[1] - half_h};
+                auto p1 = go::vf2{arrow_center[0] + half_w, arrow_center[1] - half_h};
+                auto p2 = go::vf2{arrow_center[0], arrow_center[1] + half_h};
+                header_solid->add_triangle(p0, p1, p2, m_style.text_color);
+            }
+            else
+            {
+                auto p0 = go::vf2{arrow_center[0] - half_h, arrow_center[1] - half_w};
+                auto p1 = go::vf2{arrow_center[0] - half_h, arrow_center[1] + half_w};
+                auto p2 = go::vf2{arrow_center[0] + half_h, arrow_center[1]};
+                header_solid->add_triangle(p0, p1, p2, m_style.text_color);
+            }
+        }
+
+        if (header_text && !m_header.empty() && m_style.font.ptr)
+        {
+            auto text_pos = centered_single_line_text_pos({0.0f, 0.0f}, {m_size[0], m_header_height}, m_header, m_style.font.ptr);
+            header_text->add(m_header, text_pos, m_style.text_color);
+        }
+
+        if (!m_expanded)
+        {
+            for (auto& child : m_children)
+            {
+                if (auto panel = cast_drawable(child.get()); panel != nullptr)
+                    clear_draw_context(panel->get_draw_context());
+            }
+
+            draw_element_border(ctx, {0.0f, 0.0f}, m_size, get_border_color(), get_draw_border(), 2);
+            return;
+        }
+
+        if (m_expanded)
+        {
+            auto content_pos = go::vf2{0.0f, m_header_height};
+            auto content_size = go::vf2{m_size[0], std::max(0.0f, m_size[1] - m_header_height)};
+            auto content_scissors = rect_intersection(ctx.viewport, to_rect(m_position + content_pos, content_size));
+
+            draw_element_background(ctx, content_pos, content_size, get_bg_color(), get_draw_background(), 0);
+
+            for (auto& child : m_children)
+            {
+                if (!child->is_visible())
+                    continue;
+
+                if (auto panel = cast_drawable(child.get()); panel != nullptr)
+                {
+                    auto& panel_ctx = panel->get_draw_context();
+                    panel_ctx.viewport = to_rect(panel->get_position() + m_position + m_scroll_offset + content_pos, panel->get_size());
+                    panel_ctx.scissors = content_scissors;
+                    panel->update(panel_ctx);
+                }
+                else
+                {
+                    child->update(ctx);
+                }
+            }
+
+            auto max_scroll = max_scroll_offset();
+            auto content = m_content_panel ? m_content_panel->get_size() : go::vf2{0.0f, 0.0f};
+            if (max_scroll[1] > 0.0f)
+            {
+                auto* scrollbar = effective_solid_buffer(ctx, 2);
+                if (scrollbar)
+                {
+                    auto content_h = content[1];
+                    auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, content_size[1] * (content_size[1] / content_h));
+                    thumb_h = std::min(thumb_h, content_size[1]);
+                    auto travel = std::max(0.0f, content_size[1] - thumb_h);
+                    auto t = std::clamp((-m_scroll_offset[1] / max_scroll[1]), 0.0f, 1.0f);
+                    scrollbar->add_rect({m_size[0] - k_panel_scrollbar_width, m_header_height + travel * t}, {k_panel_scrollbar_width, thumb_h}, color_lightgrey);
+                }
+            }
+        }
+
+        draw_element_border(ctx, {0.0f, 0.0f}, m_size, get_border_color(), get_draw_border(), 2);
+    }
+
     auto UIPanel::add(std::unique_ptr<UIElement> element) -> UIElement*
     {
         element->m_parent = this;
@@ -1485,12 +1768,13 @@ namespace engi::ui2
             return {0.0f, 0.0f};
 
         auto content = proxy->get_size();
+        auto view = content_viewport_size();
         auto max_x = 0.0f;
         auto max_y = 0.0f;
         if (m_layout == Layout::Horizontal)
-            max_x = std::max(0.0f, content[0] - m_size[0]);
+            max_x = std::max(0.0f, content[0] - std::max(0.0f, view[0]));
         else if (m_layout == Layout::Vertical)
-            max_y = std::max(0.0f, content[1] - m_size[1]);
+            max_y = std::max(0.0f, content[1] - std::max(0.0f, view[1]));
         return {max_x, max_y};
     }
 
@@ -1510,8 +1794,11 @@ namespace engi::ui2
 
         auto local = go::vf2{ev.mouse_pos[0] - m_position[0], ev.mouse_pos[1] - m_position[1]};
         auto inside = point_in_rect(local, {0, 0}, m_size);
+        auto content_offset = content_viewport_offset();
+        auto content_size = content_viewport_size();
+        auto inside_content = point_in_rect(local, content_offset, content_size);
 
-        if (ev.type == EventType::Scroll && inside)
+        if (ev.type == EventType::Scroll && inside_content)
         {
             if (m_layout == Layout::Horizontal)
             {
@@ -1530,6 +1817,8 @@ namespace engi::ui2
 
         auto child_ev = ev;
         child_ev.mouse_pos = {local[0] - m_scroll_offset[0], local[1] - m_scroll_offset[1]};
+    child_ev.mouse_pos[0] -= content_offset[0];
+    child_ev.mouse_pos[1] -= content_offset[1];
 
         auto is_pointer_event =
             ev.type == EventType::MouseMove ||
@@ -1635,8 +1924,8 @@ namespace engi::ui2
                 child->clear_interaction_state();
             if (child->element_type() == ElementType::Panel)
                 static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
-            //if (child->element_type() == ElementType::ExpandablePanel)
-            //    static_cast<UIExpandablePanel*>(child.get())->clear_interaction_state_recursive(keep_id);
+            if (child->element_type() == ElementType::ExpandablePanel)
+                static_cast<UIPanel*>(child.get())->clear_interaction_state_recursive(keep_id);
         }
     }
 
@@ -1680,6 +1969,10 @@ namespace engi::ui2
         clear_draw_context(ctx);
         draw_element_background(ctx, go::vf2{0, 0}, m_size, get_bg_color(), m_style.draw_background, 0);
 
+        auto content_offset = content_viewport_offset();
+        auto content_size = content_viewport_size();
+        auto content_scissors = rect_intersection(ctx.viewport, to_rect(m_position + content_offset, content_size));
+
         for (auto& child : m_children)
         {
             if (!child->is_visible())
@@ -1687,8 +1980,8 @@ namespace engi::ui2
             if (auto panel = cast_drawable(child.get()); panel != nullptr)
             {
                 auto& panel_ctx = panel->get_draw_context();
-                panel_ctx.viewport = to_rect(panel->get_position() + m_position + m_scroll_offset, panel->get_size());
-                panel_ctx.scissors = ctx.viewport;
+                panel_ctx.viewport = to_rect(panel->get_position() + m_position + m_scroll_offset + content_offset, panel->get_size());
+                panel_ctx.scissors = content_scissors;
                 panel->update(panel_ctx);
             }
             else
@@ -1707,11 +2000,12 @@ namespace engi::ui2
             if (solid_buff)
             {
                 auto content_h = content[1];
-                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, m_size[1] * (m_size[1] / content_h));
-                thumb_h = std::min(thumb_h, m_size[1]);
-                auto travel = std::max(0.0f, m_size[1] - thumb_h);
+                auto view_h = std::max(0.0f, content_size[1]);
+                auto thumb_h = std::max(k_panel_scrollbar_min_thumb_height, view_h * (view_h / content_h));
+                thumb_h = std::min(thumb_h, view_h);
+                auto travel = std::max(0.0f, view_h - thumb_h);
                 auto t = std::clamp(max_scroll[1] > 0.0f ? (-m_scroll_offset[1] / max_scroll[1]) : 0.0f, 0.0f, 1.0f);
-                go::vf2 scroll_pos = {m_size[0] - k_panel_scrollbar_width, travel * t};
+                go::vf2 scroll_pos = {content_offset[0] + content_size[0] - k_panel_scrollbar_width, content_offset[1] + travel * t};
                 go::vf2 scroll_size = {k_panel_scrollbar_width, thumb_h};
                 solid_buff->add_rect(scroll_pos, scroll_size, color_lightgrey);
             }
@@ -1723,15 +2017,31 @@ namespace engi::ui2
             if (solid_buff)
             {
                 auto content_w = content[0];
-                auto thumb_w = std::max(k_panel_scrollbar_min_thumb_width, m_size[0] * (m_size[0] / content_w));
-                thumb_w = std::min(thumb_w, m_size[0]);
-                auto travel = std::max(0.0f, m_size[0] - thumb_w);
+                auto view_w = std::max(0.0f, content_size[0]);
+                auto thumb_w = std::max(k_panel_scrollbar_min_thumb_width, view_w * (view_w / content_w));
+                thumb_w = std::min(thumb_w, view_w);
+                auto travel = std::max(0.0f, view_w - thumb_w);
                 auto t = std::clamp(max_scroll[0] > 0.0f ? (-m_scroll_offset[0] / max_scroll[0]) : 0.0f, 0.0f, 1.0f);
-                go::vf2 scroll_pos = {travel * t, m_size[1] - k_panel_scrollbar_height};
+                go::vf2 scroll_pos = {content_offset[0] + travel * t, content_offset[1] + content_size[1] - k_panel_scrollbar_height};
                 go::vf2 scroll_size = {thumb_w, k_panel_scrollbar_height};
                 solid_buff->add_rect(scroll_pos, scroll_size, color_lightgrey);
             }
         }
+    }
+
+    auto UIExpandablePanel::content_viewport_offset() const noexcept -> go::vf2
+    {
+        return {0.0f, m_header_height};
+    }
+
+    auto UIExpandablePanel::content_viewport_size() const noexcept -> go::vf2
+    {
+        if (!m_expanded)
+            return {std::max(0.0f, m_size[0]), 0.0f};
+        return {
+            std::max(0.0f, m_size[0]),
+            std::max(0.0f, m_size[1] - m_header_height)
+        };
     }
 
     auto UIPanel::upload(VkCommandBuffer cmd) -> void

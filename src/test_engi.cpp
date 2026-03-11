@@ -354,17 +354,13 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
             .font = font_id
         }
     };
-    /*style_sheet.expandable_panel = {
+    style_sheet.expandable_panel = {
         {
-            .draw_background = true,
-            .draw_border = true,
-            .bg_color = {90, 15, 15, 255},
-            .border_color = {255, 0, 0, 255},
             .header_bg_color = {170, 40, 40, 255},
             .text_color = {255, 255, 255, 255},
             .font = font_id
         }
-    };*/
+    };
     style_sheet.panel = {
         {
             .draw_background = true,
@@ -501,6 +497,40 @@ auto engi::TestEngi::init(VkCommandBuffer cmd, uint32_t frame_id) -> void
     auto_hbtn2->set_size({90.0f, 24.0f});
     auto_hbtn2->applyStyleSheet(style_sheet, 0);
     auto_hbtn2->on_click = [](){ std::println("[UI] Auto H2 clicked"); };
+
+    auto expandable = root.add_new<ui::UIExpandablePanel>();
+    expandable->set_size({220.0f, 124.0f});
+    expandable->set_header(L"Expandable");
+    expandable->set_expanded(true);
+    expandable->set_header_height(24.0f);
+    expandable->set_padding(8.0f);
+    expandable->set_spacing(8.0f);
+    expandable->set_draw_background(true);
+    expandable->set_draw_border(true);
+    expandable->set_bg_color({90, 15, 15, 220});
+    expandable->set_border_color({255, 0, 0, 255});
+    expandable->applyStyleSheet(style_sheet, 0);
+
+    auto exp_btn1 = expandable->add_new<ui::UIButton>();
+    exp_btn1->set_label(L"Expand Btn 1");
+    exp_btn1->set_size({200.0f, 24.0f});
+    exp_btn1->applyStyleSheet(style_sheet, 0);
+    exp_btn1->on_click = [](){ std::println("[UI] Expand Btn 1 clicked"); };
+
+    auto exp_btn2 = expandable->add_new<ui::UIButton>();
+    exp_btn2->set_label(L"Expand Btn 2");
+    exp_btn2->set_size({200.0f, 24.0f});
+    exp_btn2->applyStyleSheet(style_sheet, 0);
+    exp_btn2->on_click = [](){ std::println("[UI] Expand Btn 2 clicked"); };
+
+    auto exp_input = expandable->add_new<ui::UITextInput>();
+    exp_input->set_size({200.0f, 24.0f});
+    exp_input->set_text(L"Expandable input");
+    exp_input->applyStyleSheet(style_sheet, 0);
+    exp_input->on_change = [](const std::wstring&)
+    {
+        std::println("[UI] Expandable input changed");
+    };
 
 
     /*auto* align_left = root.add_new<ui::UILabel>();

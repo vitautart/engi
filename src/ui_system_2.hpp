@@ -253,15 +253,59 @@ namespace engi::ui2
 
     protected:
         auto allow_layout(Layout l) const noexcept -> bool override { return l == Layout::Horizontal || l == Layout::Vertical; }
-
-    private:
         auto ensure_content_panel() -> UIAutoPanel*;
         auto sync_content_panel() -> void;
         auto max_scroll_offset() const -> go::vf2;
         auto clamp_scroll() -> void;
+        virtual auto content_viewport_offset() const noexcept -> go::vf2 { return {0.0f, 0.0f}; }
+        virtual auto content_viewport_size() const noexcept -> go::vf2 { return m_size; }
 
+    protected:
         UIAutoPanel* m_content_panel = nullptr;
         go::vf2 m_scroll_offset = {0.0f, 0.0f};
+    };
+
+    class UIExpandablePanel : public UIScrollablePanel
+    {
+    public:
+        UIExpandablePanel();
+
+        auto on_event(UIEvent& ev) -> bool override;
+        auto update(DrawContext& ctx) -> void override;
+        auto applyStyleSheet(const UIStyleSheet& style_sheet, size_t index) -> void override;
+        auto element_type() const -> ElementType override { return ElementType::ExpandablePanel; }
+
+        auto set_header(std::wstring text) -> void;
+        auto get_header() const -> const std::wstring& { return m_header; }
+
+        auto set_expanded(bool expanded) -> void;
+        auto is_expanded() const noexcept -> bool { return m_expanded; }
+
+        auto set_header_height(float h) -> void;
+        auto get_header_height() const noexcept -> float { return m_header_height; }
+
+        auto set_font(vk::FontId f) -> void { m_style.font = f; mark_dirty(); }
+        auto get_font() const noexcept -> vk::FontId { return m_style.font; }
+
+        auto set_header_bg_color(go::vu4 c) -> void;
+        auto get_header_bg_color() const noexcept -> go::vu4 { return m_style.header_bg_color; }
+
+        auto set_text_color(go::vu4 c) -> void;
+        auto get_text_color() const noexcept -> go::vu4 { return m_style.text_color; }
+
+    protected:
+        auto allow_layout(Layout l) const noexcept -> bool override { return l == Layout::Vertical; }
+        auto content_viewport_offset() const noexcept -> go::vf2 override;
+        auto content_viewport_size() const noexcept -> go::vf2 override;
+
+    private:
+        auto sync_height_with_state() -> void;
+
+        std::wstring m_header;
+        bool m_expanded = true;
+        float m_header_height = 24.0f;
+        float m_expanded_height = 100.0f;
+        UIExpandablePanelStyle m_style = {};
     };
 
     // ===== UILabel =====
